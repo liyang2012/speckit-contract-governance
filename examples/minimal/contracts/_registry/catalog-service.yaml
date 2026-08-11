@@ -1,0 +1,11 @@
+service: catalog-service
+database: db_catalog
+
+contract_files:
+  api: catalog-service/api.yaml
+  events: []
+
+consumes:
+  feign: []
+  http: []
+  mq: []

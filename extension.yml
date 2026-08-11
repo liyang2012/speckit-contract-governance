@@ -1,0 +1,120 @@
+schema_version: "1.0"
+
+extension:
+  id: contract-governance
+  name: "Contract Governance"
+  version: "1.5.0"
+  description: "Bootstraps and semantically validates FE/BE boundaries, Provider/Consumer contracts, OpenAPI schemas and changes, SERVICE-MAP topology, Feign/internal HTTP/MQ safety and authentication policy, runtime drift, and structured governance reports"
+  author: spec-kit-community
+  license: MIT
+
+requires:
+  speckit_version: ">=0.2.0"
+  tools:
+    - name: bash
+      required: true
+    - name: python3
+      required: true
+
+provides:
+  commands:
+    - name: speckit.contract-governance.init
+      aliases:
+        - speckit.contract.init
+      file: commands/speckit.contract.init.md
+      description: "Initialize the root contracts/ registry for a service"
+    - name: speckit.contract-governance.init-consumer
+      aliases:
+        - speckit.contract.init-consumer
+      file: commands/speckit.contract.init-consumer.md
+      description: "Initialize a frontend Consumer Contract under contracts/_consumers/"
+    - name: speckit.contract-governance.validate-boundary
+      aliases:
+        - speckit.contract.validate-boundary
+      file: commands/speckit.contract.validate-boundary.md
+      description: "Validate FE/BE/Contract boundaries in plan.md and tasks.md"
+    - name: speckit.contract-governance.validate-registry
+      aliases:
+        - speckit.contract.validate-registry
+      file: commands/speckit.contract.validate-registry.md
+      description: "Validate microservice registry and frontend Consumer Contract governance rules"
+    - name: speckit.contract-governance.diff
+      aliases:
+        - speckit.contract.diff
+      file: commands/speckit.contract.diff.md
+      description: "Detect contract changes via git diff and generate x-changelog entries"
+    - name: speckit.contract-governance.validate
+      aliases:
+        - speckit.contract.validate
+      file: commands/speckit.contract.validate.md
+      description: "Run FE/BE boundary, microservice registry, and frontend Consumer Contract validation"
+    - name: speckit.contract-governance.audit
+      aliases:
+        - speckit.contract.audit
+      file: commands/speckit.contract.audit.md
+      description: "Run semantic schema, runtime OpenAPI, event compatibility, pending-age, and structured report audits"
+    - name: speckit.contract-governance.sync-map
+      aliases:
+        - speckit.contract.sync-map
+      file: commands/speckit.contract.sync-map.md
+      description: "Preview or explicitly synchronize SERVICE-MAP.md from registries and consumers"
+
+  config:
+    - name: "contract-governance-config.yml"
+      template: "config-template.yml"
+      description: "Contract governance rules and defaults"
+      required: false
+
+hooks:
+  after_plan:
+    command: speckit.contract-governance.validate-boundary
+    optional: false
+    description: "Validate FE/BE/Contract boundary after planning"
+  before_tasks:
+    command: speckit.contract-governance.validate
+    optional: false
+    description: "Validate contract governance before task generation"
+  after_tasks:
+    command: speckit.contract-governance.validate
+    optional: false
+    description: "Validate contract governance after task generation"
+
+tags:
+  - "boundary"
+  - "microservice"
+  - "contract"
+  - "consumer"
+  - "frontend"
+  - "openapi"
+  - "feign"
+  - "internal-http"
+  - "mq"
+  - "semantic-diff"
+  - "sarif"
+
+config:
+  defaults:
+    project_name: ""
+    default_consumer: web-app
+    allowed_tags:
+      - "前端API"
+      - "Feign"
+      - "内部API"
+      - "外部API"
+    internal_http_tag: "内部API"
+    internal_path_prefix: "/internal/"
+    internal_service_auth_mode: "provider-defined"
+    frontend_keywords: ""
+    response_wrapper_schemas: ""
+    consumer_statuses:
+      - PENDING
+      - RESOLVED
+      - MISMATCH
+    changelog_types:
+      - breaking
+      - non-breaking
+      - deprecated
+    change_ack_values:
+      - PENDING_ACK
+      - ACKNOWLEDGED
+    pending_max_age_days: 30

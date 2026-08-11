@@ -1,0 +1,42 @@
+openapi: 3.0.3
+info:
+  title: Catalog Service API
+  version: 1.0.0
+paths:
+  /api/v1/products:
+    get:
+      operationId: listProducts
+      tags: [前端API]
+      responses:
+        "200":
+          description: Product page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPageResponse"
+components:
+  schemas:
+    Product:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    ProductPage:
+      type: object
+      required: [total, records]
+      properties:
+        total:
+          type: integer
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+    ProductPageResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/ProductPage"

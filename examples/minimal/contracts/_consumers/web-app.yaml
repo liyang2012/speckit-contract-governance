@@ -1,0 +1,16 @@
+consumer: web-app
+type: frontend
+
+consumes:
+  http:
+    - provider: catalog-service
+      operationId: listProducts
+      usage: Product list page
+      required_fields:
+        - data.total
+        - data.records.id
+        - data.records.name
+      status: RESOLVED
+      evidence:
+        page: src/pages/ProductList.tsx
+        client: src/api/catalog.ts

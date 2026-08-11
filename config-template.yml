@@ -1,0 +1,78 @@
+# Contract Governance Extension Configuration
+# Copied to .specify/extensions/contract-governance/contract-governance-config.yml on install
+#
+# This file allows project-specific customization of contract governance rules.
+# Edit values below to match your project; scripts fall back to built-in defaults
+# when this file is absent or a key is missing.
+
+# Project name used in the generated SERVICE-MAP title.
+project_name: ""
+
+# Default frontend consumer name (used by init-consumer when --consumer is omitted)
+# Example: web-app, admin-portal, dashboard
+default_consumer: "web-app"
+
+# Default backend services and databases (used for batch initialization hints)
+# Each entry: name: <service-name>, database: <database-name>
+# Populate with your project's services; leave empty for manual per-service init.
+# Example:
+#   - name: order-service
+#     database: db_order
+#   - name: user-service
+#     database: db_user
+default_services: []
+
+# Allowed OpenAPI tags for operation caller classification.
+# Operations must declare at least one of these tags.
+# "Feign" and the configured internal_http_tag imply backend-to-backend calls
+# and require the internal_path_prefix below.
+allowed_tags:
+  - "前端API"       # Frontend-accessible API
+  - "Feign"         # Backend-to-backend (must use internal_path_prefix)
+  - "内部API"       # Language-neutral backend HTTP API (must use internal_path_prefix)
+  - "外部API"       # External system API
+
+# Tag used by language-neutral backend HTTP operations declared in consumes.http.
+internal_http_tag: "内部API"
+
+# Path prefix that Feign and language-neutral internal HTTP operations must use.
+internal_path_prefix: "/internal/"
+
+# Authentication policy for Feign and language-neutral internal HTTP operations.
+# "provider-defined": the Provider contract decides whether security is required.
+# "network-only": internal operations must not declare or inherit OpenAPI security;
+#                 use security: [] to override a secured top-level OpenAPI document.
+internal_service_auth_mode: "provider-defined"
+
+# Extra keywords to detect frontend scope in plan.md / tasks.md boundary validation.
+# Comma-separated list of app names or path fragments specific to your frontend project.
+# Generic keywords (frontend, Vue, Vite, React, etc.) are always included;
+# add project-specific identifiers here so boundary checks recognise your app.
+# Example: "my-web-app,apps/my-web-app"
+frontend_keywords: ""
+
+# Schema name patterns (comma-separated) that indicate a standard API response wrapper.
+# When set, validate-registry checks that api.yaml declares at least one matching schema
+# under components.schemas (or references one via $ref). Leave empty to skip the check.
+# Example: "Result,PageResult"
+response_wrapper_schemas: ""
+
+# Allowed consumer status values (used in registry and consumer contracts)
+consumer_statuses:
+  - PENDING
+  - RESOLVED
+  - MISMATCH
+
+# Allowed changelog entry types (used in x-changelog validation)
+changelog_types:
+  - breaking
+  - non-breaking
+  - deprecated
+
+# Allowed consumer change acknowledgment values
+change_ack_values:
+  - PENDING_ACK
+  - ACKNOWLEDGED
+
+# PENDING 超过该天数时产生老化告警；设置为 0 可关闭老化阈值。
+pending_max_age_days: 30
