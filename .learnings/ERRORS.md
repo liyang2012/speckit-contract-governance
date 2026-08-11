@@ -136,7 +136,7 @@ Use the authenticated SSH remote, or refresh the HTTPS token with repository con
 
 **Logged**: 2026-08-11T14:47:50+08:00
 **Priority**: high
-**Status**: pending
+**Status**: resolved
 **Area**: tests
 
 ### Summary
@@ -171,6 +171,12 @@ Set test-local Git identity for temporary repositories. Refactor the PowerShell 
 - Recurrence-Count: 4
 - First-Seen: 2026-08-11
 - Last-Seen: 2026-08-11
+
+### Resolution
+
+- **Resolved**: 2026-08-11T15:03:35+08:00
+- **Commit/PR**: a6fd448
+- **Notes**: Added fixture-local Git identity, fixed PowerShell argument capture and drive-root traversal, repaired PowerShell control flow and failure reporting, forced UTF-8 for Python subprocesses, and used hashtable splatting for script-to-script named parameters. GitHub Actions run 31467384088 passed both jobs.
 
 ---
 
