@@ -88,6 +88,21 @@ function Invoke-Capture {
     return @{ ExitCode = $rc; Output = $output }
 }
 
+# --- Test: repo root traversal -----------------------------------------------
+
+Write-Host "=== Test: repo root traversal ==="
+$rootProbeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("cg-root-probe-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+New-Item -ItemType Directory -Path $rootProbeDir -Force | Out-Null
+. (Join-Path $ScriptDir "common-utils.ps1")
+try {
+    $rootProbeResult = Find-RepoRoot -StartDir $rootProbeDir
+    Assert-Exit -Label "Find-RepoRoot returns cleanly when .specify is absent" -Expected 0 -Actual $(if ($null -eq $rootProbeResult) { 0 } else { 1 })
+} catch {
+    Assert-Exit -Label "Find-RepoRoot returns cleanly when .specify is absent" -Expected 0 -Actual 1 -Output $_.Exception.Message
+} finally {
+    Remove-Item -Recurse -Force $rootProbeDir -ErrorAction SilentlyContinue
+}
+
 # --- Test: -Help flags -------------------------------------------------------
 
 Write-Host "=== Test: -Help flags ==="

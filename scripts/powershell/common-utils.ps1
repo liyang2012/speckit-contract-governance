@@ -4,13 +4,14 @@
 
 function Find-RepoRoot {
     param([string]$StartDir)
-    $current = Resolve-Path $StartDir
-    while ($true) {
+    $current = (Resolve-Path $StartDir).Path
+    while ($current) {
         if (Test-Path (Join-Path $current '.specify')) { return $current }
         $parent = Split-Path $current -Parent
-        if ($parent -eq $current) { return $null }
+        if (-not $parent -or $parent -eq $current) { return $null }
         $current = $parent
     }
+    return $null
 }
 
 function Resolve-FeatureDir {
