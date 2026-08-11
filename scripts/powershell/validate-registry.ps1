@@ -473,7 +473,7 @@ if ($failures.Count -eq 0 -and (Test-Path $semanticAnalyzer)) {
 foreach ($w in $warnings) { Write-Warning "[contract-governance] Warning: $w" }
 
 if ($failures) {
-    Write-Error "[contract-governance] Registry validation failed"
+    Write-Error "[contract-governance] Registry validation failed" -ErrorAction Continue
     foreach ($f in $failures) { Write-Host "  - $f" -ForegroundColor Red }
     Write-Host "[contract-governance] New projects: run init-registry.ps1 -Service <name>; frontend: run init-consumer.ps1 -Consumer <name>"
     exit 1

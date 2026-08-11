@@ -69,6 +69,10 @@ function Assert-OutputContains {
         $script:Pass++
     } else {
         Write-Host "  FAIL: $Label (output missing: '$Expected')" -ForegroundColor Red
+        if ($Output) {
+            Write-Host "  Captured output:"
+            Write-Host $Output
+        }
         $script:Fail++
     }
 }
@@ -130,7 +134,7 @@ Assert-FileExists -Label "SERVICE-MAP.md created" -File (Join-Path $TestDir "con
 Assert-FileExists -Label "_registry/test-svc.yaml created" -File (Join-Path $TestDir "contracts/_registry/test-svc.yaml")
 Assert-FileExists -Label "test-svc/api.yaml created" -File (Join-Path $TestDir "contracts/test-svc/api.yaml")
 Assert-FileExists -Label "test-svc/events/.gitkeep created" -File (Join-Path $TestDir "contracts/test-svc/events/.gitkeep")
-Assert-OutputContains -Label "init-registry prints success message" -Expected "init" -Output $result.Output
+Assert-OutputContains -Label "init-registry prints success message" -Expected "initialization complete" -Output $result.Output.ToLower()
 
 # Run again - should not overwrite
 $result = Invoke-Capture -Script $scriptPath -Arguments @("-Service", "test-svc", "-Database", "db_test")

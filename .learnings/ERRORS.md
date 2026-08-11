@@ -156,6 +156,7 @@ PowerShell smoke suite: command help and initialization assertions returned exit
 - The PowerShell smoke helper declares an `Args` parameter, colliding case-insensitively with PowerShell's automatic `$args` variable, and invokes scripts through a nested command string.
 - The PowerShell harness captures but does not print the underlying child-script error on assertion failure, obscuring the first failure boundary.
 - After argument reporting was fixed, Windows exposed a second boundary: `Find-RepoRoot` traversed past a drive root into an empty parent path and passed it to `Join-Path`.
+- After root traversal was fixed, Windows exposed invalid `return if` syntax in `diff-contract.ps1` and terminating `Write-Error` calls that hid detailed validation failures under `ErrorActionPreference=Stop`.
 
 ### Suggested Fix
 
@@ -166,7 +167,7 @@ Set test-local Git identity for temporary repositories. Refactor the PowerShell 
 - Reproducible: yes
 - Related Files: scripts/bash/test-smoke.sh, scripts/powershell/test-smoke.ps1, scripts/powershell/common-utils.ps1, .github/workflows/ci.yml
 - Pattern-Key: tests.ci-clean-runner-assumptions
-- Recurrence-Count: 2
+- Recurrence-Count: 3
 - First-Seen: 2026-08-11
 - Last-Seen: 2026-08-11
 

@@ -139,7 +139,8 @@ $addedKeys   = $newKeys | Where-Object { $_ -notin $oldKeys }
 function Find-OpId {
     param($Ops, [string]$Path, [string]$Method)
     $match = $Ops | Where-Object { $_.Path -eq $Path -and $_.Method -eq $Method } | Select-Object -First 1
-    return if ($match) { $match.OperationId } else { "" }
+    if ($match) { return $match.OperationId }
+    return ""
 }
 
 $today = Get-Date -Format "yyyy-MM-dd"

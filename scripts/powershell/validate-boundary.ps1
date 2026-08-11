@@ -192,7 +192,7 @@ switch ($mode) {
 foreach ($w in $warnings) { Write-Warning "[contract-governance] Warning: $w" }
 
 if ($failures) {
-    Write-Error "[contract-governance] Boundary validation failed: $featurePath"
+    Write-Error "[contract-governance] Boundary validation failed: $featurePath" -ErrorAction Continue
     foreach ($f in $failures) { Write-Host "  - $f" -ForegroundColor Red }
     Write-Host "[contract-governance] Suggestion: define Contract boundaries before splitting FE/BE implementation tasks."
     exit 1
