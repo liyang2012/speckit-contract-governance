@@ -62,6 +62,14 @@ capture() {
     _CAPTURED_RC=$rc
 }
 
+init_test_git_repo() {
+    git init -q
+    git add -A
+    git -c user.name="Contract Governance Tests" \
+        -c user.email="contract-governance-tests@example.invalid" \
+        commit -q -m "init"
+}
+
 # ─── Test: --help flags ─────────────────────────────────────────────────────
 
 echo "=== Test: --help flags ==="
@@ -325,7 +333,7 @@ echo ""
 echo "=== Test: diff-contract (no changes) ==="
 setup_test_dir
 "$SCRIPT_DIR/init-registry.sh" --service svc-d --database db_d >/dev/null 2>&1
-git init -q && git add -A && git commit -q -m "init" 2>/dev/null
+init_test_git_repo
 
 capture "$SCRIPT_DIR/diff-contract.sh" --service svc-d
 assert_exit "diff-contract exits 0 with no changes" 0 $_CAPTURED_RC
@@ -356,7 +364,7 @@ paths:
 components:
   schemas: {}
 EOF
-git init -q && git add -A && git commit -q -m "init" 2>/dev/null
+init_test_git_repo
 # Remove the operation (breaking change)
 cat > "$TEST_DIR/contracts/svc-e/api.yaml" << 'EOF'
 openapi: 3.0.3
@@ -424,7 +432,7 @@ components:
         id: { type: integer }
         name: { type: string }
 EOF
-git init -q && git add -A && git commit -q -m "init" 2>/dev/null
+init_test_git_repo
 python3 - "$TEST_DIR/contracts/svc-schema/api.yaml" << 'PY'
 import sys, yaml
 path = sys.argv[1]

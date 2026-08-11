@@ -29,13 +29,22 @@ function Teardown-TestDir {
 }
 
 function Assert-Exit {
-    param([string]$Label, [int]$Expected, [int]$Actual)
+    param(
+        [string]$Label,
+        [int]$Expected,
+        [int]$Actual,
+        [string]$Output = ""
+    )
     $script:TestsRun++
     if ($Actual -eq $Expected) {
         Write-Host "  PASS: $Label"
         $script:Pass++
     } else {
         Write-Host "  FAIL: $Label (expected exit=$Expected, got exit=$Actual)" -ForegroundColor Red
+        if ($Output) {
+            Write-Host "  Captured output:"
+            Write-Host $Output
+        }
         $script:Fail++
     }
 }
@@ -65,11 +74,11 @@ function Assert-OutputContains {
 }
 
 function Invoke-Capture {
-    param([string]$Script, [string[]]$Args)
+    param([string]$Script, [string[]]$Arguments)
     $rc = 0
     $output = ""
     try {
-        $output = & pwsh -NoProfile -Command "& '$Script' $($Args -join ' ')" 2>&1 | Out-String
+        $output = & pwsh -NoProfile -File $Script @Arguments 2>&1 | Out-String
         $rc = $LASTEXITCODE
         if ($null -eq $rc) { $rc = 0 }
     } catch {
@@ -89,8 +98,8 @@ foreach ($s in $scripts) {
         Write-Host "  SKIP: $s not found"
         continue
     }
-    $result = Invoke-Capture -Script $scriptPath -Args @("-Help")
-    Assert-Exit -Label "$s -Help exits 0" -Expected 0 -Actual $result.ExitCode
+    $result = Invoke-Capture -Script $scriptPath -Arguments @("-Help")
+    Assert-Exit -Label "$s -Help exits 0" -Expected 0 -Actual $result.ExitCode -Output $result.Output
 }
 
 # --- Test: init-registry -----------------------------------------------------
@@ -100,8 +109,8 @@ Write-Host "=== Test: init-registry ==="
 Setup-TestDir
 
 $scriptPath = Join-Path $ScriptDir "init-registry.ps1"
-$result = Invoke-Capture -Script $scriptPath -Args @("-Service", "test-svc", "-Database", "db_test")
-Assert-Exit -Label "init-registry exits 0" -Expected 0 -Actual $result.ExitCode
+$result = Invoke-Capture -Script $scriptPath -Arguments @("-Service", "test-svc", "-Database", "db_test")
+Assert-Exit -Label "init-registry exits 0" -Expected 0 -Actual $result.ExitCode -Output $result.Output
 Assert-FileExists -Label "SERVICE-MAP.md created" -File (Join-Path $TestDir "contracts/SERVICE-MAP.md")
 Assert-FileExists -Label "_registry/test-svc.yaml created" -File (Join-Path $TestDir "contracts/_registry/test-svc.yaml")
 Assert-FileExists -Label "test-svc/api.yaml created" -File (Join-Path $TestDir "contracts/test-svc/api.yaml")
@@ -109,7 +118,7 @@ Assert-FileExists -Label "test-svc/events/.gitkeep created" -File (Join-Path $Te
 Assert-OutputContains -Label "init-registry prints success message" -Expected "init" -Output $result.Output
 
 # Run again - should not overwrite
-$result = Invoke-Capture -Script $scriptPath -Args @("-Service", "test-svc", "-Database", "db_test")
+$result = Invoke-Capture -Script $scriptPath -Arguments @("-Service", "test-svc", "-Database", "db_test")
 Assert-OutputContains -Label "init-registry does not overwrite existing" -Expected "exist" -Output $result.Output.ToLower()
 
 Teardown-TestDir
@@ -121,16 +130,16 @@ Write-Host "=== Test: init-consumer ==="
 Setup-TestDir
 
 $scriptPath = Join-Path $ScriptDir "init-consumer.ps1"
-$result = Invoke-Capture -Script $scriptPath -Args @("-Consumer", "my-web")
-Assert-Exit -Label "init-consumer exits 0" -Expected 0 -Actual $result.ExitCode
+$result = Invoke-Capture -Script $scriptPath -Arguments @("-Consumer", "my-web")
+Assert-Exit -Label "init-consumer exits 0" -Expected 0 -Actual $result.ExitCode -Output $result.Output
 Assert-FileExists -Label "_consumers/my-web.yaml created" -File (Join-Path $TestDir "contracts/_consumers/my-web.yaml")
 
 Teardown-TestDir
 
 # With config default (no -Consumer)
 Setup-TestDir
-$result = Invoke-Capture -Script $scriptPath -Args @()
-Assert-Exit -Label "init-consumer with config default exits 0" -Expected 0 -Actual $result.ExitCode
+$result = Invoke-Capture -Script $scriptPath -Arguments @()
+Assert-Exit -Label "init-consumer with config default exits 0" -Expected 0 -Actual $result.ExitCode -Output $result.Output
 Assert-OutputContains -Label "init-consumer uses config default" -Expected "web-app" -Output $result.Output
 Teardown-TestDir
 
@@ -144,8 +153,8 @@ Setup-TestDir
 & pwsh -NoProfile -Command "& '$(Join-Path $ScriptDir 'init-consumer.ps1')' -Consumer web-app" 2>&1 | Out-Null
 
 $scriptPath = Join-Path $ScriptDir "validate-registry.ps1"
-$result = Invoke-Capture -Script $scriptPath -Args @("-BootstrapOk")
-Assert-Exit -Label "validate-registry exits 0 on clean setup" -Expected 0 -Actual $result.ExitCode
+$result = Invoke-Capture -Script $scriptPath -Arguments @("-BootstrapOk")
+Assert-Exit -Label "validate-registry exits 0 on clean setup" -Expected 0 -Actual $result.ExitCode -Output $result.Output
 Assert-OutputContains -Label "validate-registry reports pass" -Output $result.Output -Expected "pass"
 
 Teardown-TestDir
@@ -173,8 +182,8 @@ $existingContent = Get-Content (Join-Path $TestDir "contracts/svc-b/api.yaml") -
 $existingContent + $badChangelog | Out-File -FilePath (Join-Path $TestDir "contracts/svc-b/api.yaml") -Encoding utf8
 
 $scriptPath = Join-Path $ScriptDir "validate-registry.ps1"
-$result = Invoke-Capture -Script $scriptPath -Args @()
-Assert-Exit -Label "validate-registry exits 1 on bad x-changelog type" -Expected 1 -Actual $result.ExitCode
+$result = Invoke-Capture -Script $scriptPath -Arguments @()
+Assert-Exit -Label "validate-registry exits 1 on bad x-changelog type" -Expected 1 -Actual $result.ExitCode -Output $result.Output
 Assert-OutputContains -Label "detects invalid x-changelog type" -Expected "invalid" -Output $result.Output.ToLower()
 Teardown-TestDir
 
@@ -203,8 +212,8 @@ components:
 $apiContent | Out-File -FilePath (Join-Path $TestDir "contracts/svc-c/api.yaml") -Encoding utf8
 
 $scriptPath = Join-Path $ScriptDir "validate-registry.ps1"
-$result = Invoke-Capture -Script $scriptPath -Args @()
-Assert-Exit -Label "validate-registry exits 1 on Feign without /internal/" -Expected 1 -Actual $result.ExitCode
+$result = Invoke-Capture -Script $scriptPath -Arguments @()
+Assert-Exit -Label "validate-registry exits 1 on Feign without /internal/" -Expected 1 -Actual $result.ExitCode -Output $result.Output
 Assert-OutputContains -Label "detects Feign path violation" -Expected "/internal/" -Output $result.Output
 
 Teardown-TestDir
@@ -216,8 +225,8 @@ Write-Host "=== Test: validate-boundary (no feature) ==="
 Setup-TestDir
 
 $scriptPath = Join-Path $ScriptDir "validate-boundary.ps1"
-$result = Invoke-Capture -Script $scriptPath -Args @("-All")
-Assert-Exit -Label "validate-boundary exits 0 when no feature dir" -Expected 0 -Actual $result.ExitCode
+$result = Invoke-Capture -Script $scriptPath -Arguments @("-All")
+Assert-Exit -Label "validate-boundary exits 0 when no feature dir" -Expected 0 -Actual $result.ExitCode -Output $result.Output
 Assert-OutputContains -Label "validate-boundary reports skip" -Expected "skip" -Output $result.Output.ToLower()
 
 Teardown-TestDir
@@ -249,7 +258,7 @@ $apiWithOp | Out-File -FilePath (Join-Path $TestDir "contracts/svc-e/api.yaml") 
 Push-Location $TestDir
 git init -q 2>$null
 git add -A 2>$null
-git commit -q -m "init" 2>$null
+git -c user.name="Contract Governance Tests" -c user.email="contract-governance-tests@example.invalid" commit -q -m "init" 2>$null
 Pop-Location
 
 $apiEmpty = @"
@@ -264,12 +273,12 @@ components:
 $apiEmpty | Out-File -FilePath (Join-Path $TestDir "contracts/svc-e/api.yaml") -Encoding utf8
 
 $scriptPath = Join-Path $ScriptDir "diff-contract.ps1"
-$result = Invoke-Capture -Script $scriptPath -Args @("-Service", "svc-e")
-Assert-Exit -Label "diff-contract exits 2 on breaking change" -Expected 2 -Actual $result.ExitCode
+$result = Invoke-Capture -Script $scriptPath -Arguments @("-Service", "svc-e")
+Assert-Exit -Label "diff-contract exits 2 on breaking change" -Expected 2 -Actual $result.ExitCode -Output $result.Output
 Assert-OutputContains -Label "diff-contract reports breaking" -Expected "breaking" -Output $result.Output.ToLower()
 
-$result = Invoke-Capture -Script $scriptPath -Args @("-Service", "svc-e", "-ConsumerFiles", "contracts/_consumers/web-app.yaml")
-Assert-Exit -Label "diff-contract rejects consumer writes without -Write" -Expected 1 -Actual $result.ExitCode
+$result = Invoke-Capture -Script $scriptPath -Arguments @("-Service", "svc-e", "-ConsumerFiles", "contracts/_consumers/web-app.yaml")
+Assert-Exit -Label "diff-contract rejects consumer writes without -Write" -Expected 1 -Actual $result.ExitCode -Output $result.Output
 Assert-OutputContains -Label "diff-contract explains consumer write guard" -Expected "requires -Write" -Output $result.Output
 Teardown-TestDir
 
@@ -282,8 +291,8 @@ Setup-TestDir
 & pwsh -NoProfile -Command "& '$(Join-Path $ScriptDir 'init-registry.ps1')' -Service svc-f -Database db_f" 2>&1 | Out-Null
 
 $scriptPath = Join-Path $ScriptDir "validate-all.ps1"
-$result = Invoke-Capture -Script $scriptPath -Args @("-BootstrapOk")
-Assert-Exit -Label "validate-all exits 0 on clean setup" -Expected 0 -Actual $result.ExitCode
+$result = Invoke-Capture -Script $scriptPath -Arguments @("-BootstrapOk")
+Assert-Exit -Label "validate-all exits 0 on clean setup" -Expected 0 -Actual $result.ExitCode -Output $result.Output
 Assert-OutputContains -Label "validate-all reports pass" -Expected "pass" -Output $result.Output.ToLower()
 
 Teardown-TestDir
