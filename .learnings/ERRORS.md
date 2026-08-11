@@ -132,6 +132,45 @@ Use the authenticated SSH remote, or refresh the HTTPS token with repository con
 
 ---
 
+## [ERR-20260811-005] initial-github-actions-smoke
+
+**Logged**: 2026-08-11T14:47:50+08:00
+**Priority**: high
+**Status**: pending
+**Area**: tests
+
+### Summary
+
+The first GitHub Actions run failed in both Bash and PowerShell smoke suites despite passing locally before repository initialization.
+
+### Error
+
+```text
+Bash smoke suite: Process completed with exit code 128 during the no-change contract diff setup.
+PowerShell smoke suite: command help and initialization assertions returned exit code 1.
+```
+
+### Context
+
+- Bash smoke fixtures create commits without setting a fixture-local Git identity; hosted runners do not provide the developer's global identity.
+- The PowerShell smoke helper declares an `Args` parameter, colliding case-insensitively with PowerShell's automatic `$args` variable, and invokes scripts through a nested command string.
+- The PowerShell harness captures but does not print the underlying child-script error on assertion failure, obscuring the first failure boundary.
+
+### Suggested Fix
+
+Set test-local Git identity for temporary repositories. Refactor the PowerShell capture helper to use a non-reserved argument name and direct argument-array invocation, include captured output on failure, then rerun both smoke jobs.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: scripts/bash/test-smoke.sh, scripts/powershell/test-smoke.ps1, .github/workflows/ci.yml
+- Pattern-Key: tests.ci-clean-runner-assumptions
+- Recurrence-Count: 1
+- First-Seen: 2026-08-11
+- Last-Seen: 2026-08-11
+
+---
+
 ## [ERR-20260811-001] minimal-example-validation
 
 **Logged**: 2026-08-11T00:00:00+08:00
