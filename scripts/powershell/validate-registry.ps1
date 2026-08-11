@@ -451,14 +451,14 @@ if ($failures.Count -eq 0 -and (Test-Path $semanticAnalyzer)) {
     if (-not $python) {
         $failures += "Semantic contract validation requires python3/python"
     } else {
-        & $python -c "import yaml" 2>$null
+        & $python -X utf8 -c "import yaml" 2>$null
         if ($LASTEXITCODE -ne 0) {
             $failures += "Semantic contract validation requires PyYAML; run: $python -m pip install pyyaml"
         } else {
             $semanticArgs = @($semanticAnalyzer, 'validate', '--repo-root', $repoRoot)
             if ($Service) { $semanticArgs += @('--service', $Service) }
             if ($Consumer) { $semanticArgs += @('--consumer', $Consumer) }
-            $semanticOutput = & $python @semanticArgs 2>&1
+            $semanticOutput = & $python -X utf8 @semanticArgs 2>&1
             $semanticRc = $LASTEXITCODE
             if ($semanticOutput) { $semanticOutput | ForEach-Object { Write-Host $_ } }
             if ($semanticRc -eq 1) {

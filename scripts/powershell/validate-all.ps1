@@ -35,22 +35,22 @@ if ($Phase -notin @("plan", "tasks", "all")) {
 $scriptDir = $PSScriptRoot
 
 # Build arguments for sub-scripts
-$boundaryArgs = @()
-$registryArgs = @()
+$boundaryArgs = @{}
+$registryArgs = @{}
 
 switch ($Phase) {
-    "plan"  { $boundaryArgs += "-Plan" }
-    "tasks" { $boundaryArgs += "-Tasks" }
-    "all"   { $boundaryArgs += "-All" }
+    "plan"  { $boundaryArgs.Plan = $true }
+    "tasks" { $boundaryArgs.Tasks = $true }
+    "all"   { $boundaryArgs.All = $true }
 }
 
 if ($FeatureDir) {
-    $boundaryArgs += @("-FeatureDir", $FeatureDir)
-    $registryArgs += @("-FeatureDir", $FeatureDir)
+    $boundaryArgs.FeatureDir = $FeatureDir
+    $registryArgs.FeatureDir = $FeatureDir
 }
 
 if ($BootstrapOk) {
-    $registryArgs += "-BootstrapOk"
+    $registryArgs.BootstrapOk = $true
 }
 
 # Run boundary validation

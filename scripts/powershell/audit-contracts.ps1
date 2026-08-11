@@ -27,19 +27,19 @@ foreach ($candidate in @('python3', 'python')) {
     if ($command) { $python = $command.Source; break }
 }
 if (-not $python) { Write-Error "Contract audit requires python3/python"; exit 1 }
-& $python -c "import yaml" 2>$null
+& $python -X utf8 -c "import yaml" 2>$null
 if ($LASTEXITCODE -ne 0) { Write-Error "Contract audit requires PyYAML; run: $python -m pip install pyyaml"; exit 1 }
 
 if ($RuntimeOpenApi) {
     if (-not $Service) { Write-Error "-RuntimeOpenApi requires -Service"; exit 1 }
     $contract = Join-Path $repoRoot "contracts/$Service/api.yaml"
-    & $python $analyzer runtime-diff --contract $contract --runtime $RuntimeOpenApi --service $Service --format $Format
+    & $python -X utf8 $analyzer runtime-diff --contract $contract --runtime $RuntimeOpenApi --service $Service --format $Format
     exit $LASTEXITCODE
 }
 
 if ($EventOld -or $EventNew) {
     if (-not $EventOld -or -not $EventNew) { Write-Error "-EventOld and -EventNew must be provided together"; exit 1 }
-    & $python $analyzer event-diff --old $EventOld --new $EventNew --format $Format
+    & $python -X utf8 $analyzer event-diff --old $EventOld --new $EventNew --format $Format
     exit $LASTEXITCODE
 }
 
@@ -47,5 +47,5 @@ $auditArgs = @($analyzer, 'validate', '--repo-root', $repoRoot, '--format', $For
 if ($Service) { $auditArgs += @('--service', $Service) }
 if ($Consumer) { $auditArgs += @('--consumer', $Consumer) }
 if ($StrictWarnings) { $auditArgs += '--strict-warnings' }
-& $python @auditArgs
+& $python -X utf8 @auditArgs
 exit $LASTEXITCODE

@@ -14,10 +14,10 @@ foreach ($candidate in @('python3', 'python')) {
     if ($command) { $python = $command.Source; break }
 }
 if (-not $python) { Write-Error "SERVICE-MAP sync requires python3/python"; exit 1 }
-& $python -c "import yaml" 2>$null
+& $python -X utf8 -c "import yaml" 2>$null
 if ($LASTEXITCODE -ne 0) { Write-Error "SERVICE-MAP sync requires PyYAML; run: $python -m pip install pyyaml"; exit 1 }
 
 $mapArgs = @($analyzer, 'service-map', '--repo-root', $repoRoot)
 if ($Write) { $mapArgs += '--write' }
-& $python @mapArgs
+& $python -X utf8 @mapArgs
 exit $LASTEXITCODE

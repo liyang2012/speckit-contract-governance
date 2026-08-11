@@ -176,7 +176,7 @@ if (Test-Path $semanticAnalyzer) {
         Write-Error "Semantic contract diff requires python3/python"
         exit 1
     }
-    & $python -c "import yaml" 2>$null
+    & $python -X utf8 -c "import yaml" 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Semantic contract diff requires PyYAML; run: $python -m pip install pyyaml"
         exit 1
@@ -185,7 +185,7 @@ if (Test-Path $semanticAnalyzer) {
     $oldTemp = New-TemporaryFile
     try {
         Set-Content -Path $oldTemp -Value ($oldApi -join "`n") -Encoding utf8
-        $semanticOutput = & $python $semanticAnalyzer diff --repo-root $repoRoot --service $Service --old-file $oldTemp --new-file $apiFile --format tsv 2>&1
+        $semanticOutput = & $python -X utf8 $semanticAnalyzer diff --repo-root $repoRoot --service $Service --old-file $oldTemp --new-file $apiFile --format tsv 2>&1
         $semanticRc = $LASTEXITCODE
         if ($semanticRc -ne 0 -and $semanticRc -ne 2) {
             $semanticOutput | ForEach-Object { Write-Host $_ -ForegroundColor Red }
