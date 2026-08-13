@@ -13,6 +13,7 @@
 
 ### 变更
 - 最低 Spec Kit 版本提升到 0.16.2，并补齐 `repository`、`homepage`、`category`、`effect`、核心命令依赖和显式 Hook 优先级元数据。
+- CI Action 升级到 Node 24 运行时版本，并关闭无依赖锁文件的 uv 缓存。
 
 ### 修复
 - 新增 `.extensionignore`，防止开发安装把 `.git`、CI 配置、本地学习记录和缓存复制到消费项目。
