@@ -8,7 +8,7 @@ Command failures and integration errors.
 
 **Logged**: 2026-08-13T16:40:00+08:00
 **Priority**: medium
-**Status**: pending
+**Status**: resolved
 **Area**: infra
 
 ### Summary
@@ -38,13 +38,19 @@ Pin the workflow to the published `astral-sh/setup-uv@v10.0.0` tag and rerun CI.
 - First-Seen: 2026-08-13
 - Last-Seen: 2026-08-13
 
+### Resolution
+
+- **Resolved**: 2026-08-13T16:41:00+08:00
+- **Commit/PR**: 2eefd9a
+- **Notes**: Pinned `setup-uv` to `v10.0.0`; GitHub Actions run 31681597675 passed both jobs.
+
 ---
 
 ## [ERR-20260813-001] powershell-smoke-local-runtime
 
 **Logged**: 2026-08-13T16:30:00+08:00
 **Priority**: low
-**Status**: pending
+**Status**: resolved
 **Area**: tests
 
 ### Summary
@@ -74,6 +80,11 @@ Use the Windows CI job as the PowerShell verification layer, or install PowerShe
 - Recurrence-Count: 1
 - First-Seen: 2026-08-13
 - Last-Seen: 2026-08-13
+
+### Resolution
+
+- **Resolved**: 2026-08-13T16:41:00+08:00
+- **Notes**: GitHub Actions run 31681597675 completed the PowerShell smoke suite successfully on Windows.
 
 ---
 
