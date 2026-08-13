@@ -4,6 +4,42 @@ Command failures and integration errors.
 
 ---
 
+## [ERR-20260813-003] setup-uv-major-tag-unavailable
+
+**Logged**: 2026-08-13T16:40:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: infra
+
+### Summary
+GitHub Actions could not resolve the floating `astral-sh/setup-uv@v10` reference.
+
+### Error
+
+```text
+Unable to resolve action `astral-sh/setup-uv@v10`, unable to find version `v10`
+```
+
+### Context
+
+- The upstream repository published release `v10.0.0` but did not expose a resolvable `v10` major tag.
+- The Linux job failed during setup; the Windows PowerShell job passed.
+
+### Suggested Fix
+
+Pin the workflow to the published `astral-sh/setup-uv@v10.0.0` tag and rerun CI.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: .github/workflows/ci.yml
+- Pattern-Key: config.invalid-action-ref
+- Recurrence-Count: 1
+- First-Seen: 2026-08-13
+- Last-Seen: 2026-08-13
+
+---
+
 ## [ERR-20260813-001] powershell-smoke-local-runtime
 
 **Logged**: 2026-08-13T16:30:00+08:00
