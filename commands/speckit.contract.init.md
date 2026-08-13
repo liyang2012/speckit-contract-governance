@@ -6,7 +6,7 @@ description: "初始化根目录 contracts/ 微服务契约注册表"
 
 创建根目录 `contracts/` 注册表骨架，用于全新项目或新增服务。
 
-该命令初始化后端 Provider 服务契约。前端消费方不要在这里定义接口；需要记录前端消费期望时，使用 `speckit.contract.init-consumer` 创建 `contracts/_consumers/<consumer>.yaml`。
+该命令初始化后端 Provider 服务契约。前端消费方不要在这里定义接口；需要记录前端消费期望时，使用 `speckit.contract-governance.init-consumer` 创建 `contracts/_consumers/<consumer>.yaml`。
 
 ## 行为
 

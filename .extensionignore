@@ -1,0 +1,13 @@
+.git/
+.github/
+.learnings/
+.DS_Store
+**/.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+dist/
+build/
+*.log
+AGENTS.md

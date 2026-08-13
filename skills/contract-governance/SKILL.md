@@ -7,7 +7,7 @@ description: 当用户需要初始化、校验、审计或同步 Spec Kit 契约
 
 当用户要求初始化 `contracts/`、校验契约治理、检查 FE/BE/Contract 分区、检查微服务接口契约、初始化前端消费契约，或要求区分前端接口和 Feign 内部接口时，使用这个 Skill。
 
-这个 Skill 封装当前仓库里的扩展：`.specify/extensions/contract-governance/`。优先执行扩展脚本，不要手工重新实现校验逻辑；只有脚本缺失或损坏时，才按规则人工检查并说明原因。
+这个 Skill 封装当前仓库里的扩展：`.specify/extensions/contract-governance/`，要求 Spec Kit `>= 0.16.2`。优先执行扩展脚本，不要手工重新实现校验逻辑；只有脚本缺失或损坏时，才按规则人工检查并说明原因。
 
 ## 配置来源
 
@@ -160,4 +160,4 @@ bash -n .specify/extensions/contract-governance/scripts/bash/init-registry.sh \
 PYTHONDONTWRITEBYTECODE=1 python3 .specify/extensions/contract-governance/scripts/python/test_contract_analyzer.py -v
 ```
 
-修改本 Skill 后，运行 skill-creator 的 `quick_validate.py` 校验目录；重新安装或注册扩展后，还要确认 `.specify/extensions/.registry` 的 `registered_commands.codex` 包含 `speckit.contract-governance.*` 主命令，并存在对应的 `.agents/skills/speckit-contract-governance-*` 命令 Skill。Codex 会把扩展命令直接物化为 Skill，因此 `registered_skills` 可以为空。
+修改本 Skill 后，运行 skill-creator 的 `quick_validate.py` 校验目录；重新安装或注册扩展后，还要确认 `.specify/extensions/.registry` 的 `registered_commands.codex` 包含 `speckit.contract-governance.*` 主命令，并存在对应的 `.agents/skills/speckit-contract-governance-*` 命令 Skill。Spec Kit 0.16.2 会把扩展命令及其兼容别名分别物化为 Skill，因此 `registered_skills` 可以为空；自动化和新文档统一使用 `speckit.contract-governance.*` 主命令。

@@ -4,9 +4,18 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-13
+
 ### 新增
 - 新增 `internal_service_auth_mode` 配置；`network-only` 模式下，`Feign` 与 `内部API` operation 不得声明或继承 OpenAPI `security`。
 - 语义校验新增 `internal-service-auth-forbidden` 与 `internal-service-auth-mode-invalid` 门禁，同时支持通过 operation 级 `security: []` 覆盖顶层认证。
+- 新增 Spec Kit 0.16.2 真实安装烟测，覆盖扩展注册表、Hook 优先级和 Codex 命令 Skill 物化。
+
+### 变更
+- 最低 Spec Kit 版本提升到 0.16.2，并补齐 `repository`、`homepage`、`category`、`effect`、核心命令依赖和显式 Hook 优先级元数据。
+
+### 修复
+- 新增 `.extensionignore`，防止开发安装把 `.git`、CI 配置、本地学习记录和缓存复制到消费项目。
 
 ## [1.5.0] - 2026-07-22
 

@@ -35,6 +35,7 @@ bash -n scripts/bash/*.sh
 bash scripts/bash/test-smoke.sh
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/python/test_contract_analyzer.py -v
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/python/validate_distribution.py
+bash scripts/bash/test-speckit-0162.sh
 pwsh -File scripts/powershell/test-smoke.ps1
 ```
 

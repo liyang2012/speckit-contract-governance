@@ -3,13 +3,20 @@ schema_version: "1.0"
 extension:
   id: contract-governance
   name: "Contract Governance"
-  version: "1.5.0"
-  description: "Bootstraps and semantically validates FE/BE boundaries, Provider/Consumer contracts, OpenAPI schemas and changes, SERVICE-MAP topology, Feign/internal HTTP/MQ safety and authentication policy, runtime drift, and structured governance reports"
+  version: "1.6.0"
+  description: "Validates FE/BE boundaries, Provider/Consumer contracts, OpenAPI compatibility, service topology, internal API safety, runtime drift, and governance reports"
   author: spec-kit-community
   license: MIT
+  repository: "https://github.com/liyang2012/speckit-contract-governance"
+  homepage: "https://github.com/liyang2012/speckit-contract-governance"
+  category: process
+  effect: read-write
 
 requires:
-  speckit_version: ">=0.2.0"
+  speckit_version: ">=0.16.2"
+  commands:
+    - speckit.plan
+    - speckit.tasks
   tools:
     - name: bash
       required: true
@@ -69,14 +76,17 @@ hooks:
   after_plan:
     command: speckit.contract-governance.validate-boundary
     optional: false
+    priority: 10
     description: "Validate FE/BE/Contract boundary after planning"
   before_tasks:
     command: speckit.contract-governance.validate
     optional: false
+    priority: 10
     description: "Validate contract governance before task generation"
   after_tasks:
     command: speckit.contract-governance.validate
     optional: false
+    priority: 10
     description: "Validate contract governance after task generation"
 
 tags:

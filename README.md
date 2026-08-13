@@ -4,7 +4,7 @@ FE/BE 契约边界、微服务 Provider 契约和前端 Consumer Contract 的 Sp
 
 这是一个独立、项目无关的开源实现。仓库只维护治理模型、Spec Kit 扩展、Agent Skill、跨平台脚本、测试和通用示例；业务项目自己的服务清单、运行配置、契约内容和历史告警基线不进入本仓库。
 
-许可证：MIT。当前版本：`1.5.0`。
+许可证：MIT。当前版本：`1.6.0`。要求 Spec Kit `>= 0.16.2`。
 
 ## 设计原则
 
@@ -29,8 +29,10 @@ FE/BE 契约边界、微服务 Provider 契约和前端 Consumer Contract 的 Sp
 克隆或下载本项目后，在目标 Spec Kit 项目中执行：
 
 ```bash
-specify extension add /absolute/path/to/speckit-contract-governance --dev
+specify extension add --dev /absolute/path/to/speckit-contract-governance
 ```
+
+Spec Kit 0.16.2 会读取仓库根目录的 `.extensionignore`，因此开发安装只复制扩展运行所需内容，不会把源仓库的 `.git`、CI 配置、本地学习记录或缓存带入目标项目。
 
 也可以将本项目内容复制到目标项目的 `.specify/extensions/contract-governance/`，再按 Spec Kit 扩展注册机制注册。
 
@@ -83,7 +85,7 @@ contracts/
 
 ## 命令
 
-命令主命名空间为 `speckit.contract-governance.*`；为兼容已有调用，继续保留对应的 `speckit.contract.*` 别名。
+命令主命名空间为 `speckit.contract-governance.*`；为兼容已有调用，继续保留对应的 `speckit.contract.*` 别名。Spec Kit 0.16.2 的 Codex 集成会把主命令和兼容别名分别物化为命令 Skill；新调用应统一使用主命名空间。
 
 - `speckit.contract-governance.init`（兼容别名：`speckit.contract.init`）
   - 初始化根目录 `contracts/` 契约注册表。

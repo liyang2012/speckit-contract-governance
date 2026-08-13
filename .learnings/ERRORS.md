@@ -4,6 +4,84 @@ Command failures and integration errors.
 
 ---
 
+## [ERR-20260813-001] powershell-smoke-local-runtime
+
+**Logged**: 2026-08-13T16:30:00+08:00
+**Priority**: low
+**Status**: pending
+**Area**: tests
+
+### Summary
+The local PowerShell smoke suite could not start because PowerShell 7 is not installed.
+
+### Error
+
+```text
+zsh: command not found: pwsh
+```
+
+### Context
+
+- Command attempted: `pwsh -File scripts/powershell/test-smoke.ps1`.
+- The repository still runs the PowerShell suite on `windows-latest` in GitHub Actions.
+- Bash, Python, distribution, Skill, and Spec Kit 0.16.2 installation checks passed locally.
+
+### Suggested Fix
+
+Use the Windows CI job as the PowerShell verification layer, or install PowerShell 7 locally before requiring a local cross-platform run.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: scripts/powershell/test-smoke.ps1, .github/workflows/ci.yml
+- Pattern-Key: shell.command-not-found
+- Recurrence-Count: 1
+- First-Seen: 2026-08-13
+- Last-Seen: 2026-08-13
+
+---
+
+## [ERR-20260813-002] unsafe-temporary-cleanup-command
+
+**Logged**: 2026-08-13T16:35:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tests
+
+### Summary
+A combined CI-install simulation was rejected because it ended with recursive removal commands.
+
+### Error
+
+```text
+rm -f style commands are not permitted
+```
+
+### Context
+
+- The rejected command had not started, so it did not modify the repository or create the proposed temporary directories.
+- The actual goal was only to verify the pinned official Spec Kit source.
+
+### Suggested Fix
+
+Use `uv tool run --from <source> specify --version` when only package resolution and version need verification.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: .github/workflows/ci.yml
+- Pattern-Key: shell.nonzero-exit
+- Recurrence-Count: 1
+- First-Seen: 2026-08-13
+- Last-Seen: 2026-08-13
+
+### Resolution
+
+- **Resolved**: 2026-08-13T16:36:00+08:00
+- **Notes**: Verified the pinned Git source with a side-effect-minimized `uv tool run`; it reported `specify 0.16.2`.
+
+---
+
 ## [ERR-20260811-002] github-publish-prerequisite
 
 **Logged**: 2026-08-11T14:35:22+08:00
