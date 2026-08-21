@@ -73,7 +73,7 @@ init_test_git_repo() {
 # ─── Test: --help flags ─────────────────────────────────────────────────────
 
 echo "=== Test: --help flags ==="
-for script in init-registry.sh init-consumer.sh validate-boundary.sh validate-registry.sh diff-contract.sh validate-all.sh audit-contracts.sh sync-service-map.sh; do
+for script in init-registry.sh init-consumer.sh validate-boundary.sh validate-registry.sh diff-contract.sh check-changelog.sh validate-all.sh audit-contracts.sh sync-service-map.sh; do
     capture "$SCRIPT_DIR/$script" --help
     assert_exit "$script --help exits 0" 0 $_CAPTURED_RC
 done
@@ -337,7 +337,7 @@ init_test_git_repo
 
 capture "$SCRIPT_DIR/diff-contract.sh" --service svc-d
 assert_exit "diff-contract exits 0 with no changes" 0 $_CAPTURED_RC
-assert_output_contains "diff-contract reports no changes" "无变更" "$_CAPTURED_OUTPUT"
+assert_output_contains "diff-contract reports no changes" "没有未记录的语义变化" "$_CAPTURED_OUTPUT"
 
 capture "$SCRIPT_DIR/diff-contract.sh" --service svc-d --consumer "$TEST_DIR/contracts/_consumers/web-app.yaml"
 assert_exit "diff-contract rejects consumer writes without --write" 1 $_CAPTURED_RC
@@ -378,7 +378,7 @@ EOF
 
 capture "$SCRIPT_DIR/diff-contract.sh" --service svc-e
 assert_exit "diff-contract exits 2 on breaking change" 2 $_CAPTURED_RC
-assert_output_contains "diff-contract reports breaking" "Breaking" "$_CAPTURED_OUTPUT"
+assert_output_contains "diff-contract reports breaking" "type: breaking" "$_CAPTURED_OUTPUT"
 teardown_test_dir
 
 # ─── Test: validate-all orchestrates ─────────────────────────────────────
@@ -446,6 +446,84 @@ PY
 capture "$SCRIPT_DIR/diff-contract.sh" --service svc-schema
 assert_exit "diff-contract exits 2 when response field is removed" 2 $_CAPTURED_RC
 assert_output_contains "diff-contract reports removed response field" "响应字段已删除" "$_CAPTURED_OUTPUT"
+teardown_test_dir
+
+# ─── Test: forced changelog coverage and idempotent write ────────────────
+
+echo ""
+echo "=== Test: check-changelog enforcement ==="
+setup_test_dir
+"$SCRIPT_DIR/init-registry.sh" --service svc-gate --database db_gate >/dev/null 2>&1
+cat > "$TEST_DIR/contracts/svc-gate/api.yaml" << 'EOF'
+openapi: 3.0.3
+info:
+  title: svc-gate API
+  version: 1.0.0
+paths:
+  /api/v1/items:
+    get:
+      operationId: listItems
+      tags: [前端API]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: integer}
+                  name: {type: string}
+components:
+  schemas: {}
+EOF
+init_test_git_repo
+python3 - "$TEST_DIR/contracts/svc-gate/api.yaml" << 'PY'
+import sys, yaml
+path = sys.argv[1]
+with open(path, encoding="utf-8") as handle:
+    data = yaml.safe_load(handle)
+del data["paths"]["/api/v1/items"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["name"]
+with open(path, "w", encoding="utf-8") as handle:
+    yaml.safe_dump(data, handle, allow_unicode=True, sort_keys=False)
+PY
+
+capture "$SCRIPT_DIR/check-changelog.sh" --base HEAD --service svc-gate --ci
+assert_exit "check-changelog exits 2 when changelog is missing" 2 $_CAPTURED_RC
+assert_output_contains "check-changelog reports missing fingerprint" "changelog-coverage-missing" "$_CAPTURED_OUTPUT"
+
+capture "$SCRIPT_DIR/diff-contract.sh" --service svc-gate --base HEAD --write
+assert_exit "diff-contract write preserves breaking exit" 2 $_CAPTURED_RC
+capture python3 -c 'import sys,yaml; data=yaml.safe_load(open(sys.argv[1], encoding="utf-8")); assert len(data["x-changelog"]) == 1; assert len(data["x-changelog"][0]["changes"]) == 1' "$TEST_DIR/contracts/svc-gate/api.yaml"
+assert_exit "written x-changelog is valid grouped YAML" 0 $_CAPTURED_RC
+
+capture "$SCRIPT_DIR/check-changelog.sh" --base HEAD --service svc-gate --ci
+assert_exit "check-changelog passes complete coverage" 0 $_CAPTURED_RC
+assert_output_contains "check-changelog reports complete coverage" "changelog-coverage-complete" "$_CAPTURED_OUTPUT"
+
+capture "$SCRIPT_DIR/diff-contract.sh" --service svc-gate --base HEAD --write
+assert_exit "second diff write keeps breaking exit" 2 $_CAPTURED_RC
+assert_output_contains "second diff write is idempotent" "没有未记录的语义变化" "$_CAPTURED_OUTPUT"
+capture python3 -c 'import sys,yaml; data=yaml.safe_load(open(sys.argv[1], encoding="utf-8")); assert len(data["x-changelog"]) == 1' "$TEST_DIR/contracts/svc-gate/api.yaml"
+assert_exit "second diff write does not duplicate entry" 0 $_CAPTURED_RC
+
+python3 - "$TEST_DIR/contracts/svc-gate/api.yaml" << 'PY'
+import sys, yaml
+path = sys.argv[1]
+with open(path, encoding="utf-8") as handle:
+    data = yaml.safe_load(handle)
+data["paths"]["/api/v1/items"]["get"]["responses"]["202"] = {"description": "accepted: later"}
+with open(path, "w", encoding="utf-8") as handle:
+    yaml.safe_dump(data, handle, allow_unicode=True, sort_keys=False)
+PY
+capture "$SCRIPT_DIR/diff-contract.sh" --service svc-gate --base HEAD --write
+assert_exit "same-day incremental non-breaking write succeeds" 2 $_CAPTURED_RC
+capture python3 -c 'import sys,yaml; data=yaml.safe_load(open(sys.argv[1], encoding="utf-8")); assert len(data["x-changelog"]) == 2; assert len({e["id"] for e in data["x-changelog"]}) == 2' "$TEST_DIR/contracts/svc-gate/api.yaml"
+assert_exit "same-day entries use collision-resistant IDs" 0 $_CAPTURED_RC
+
+capture "$SCRIPT_DIR/check-changelog.sh" --ci
+assert_exit "CI without configured or explicit baseline exits 1" 1 $_CAPTURED_RC
+assert_output_contains "CI reports missing baseline" "changelog-baseline-missing" "$_CAPTURED_OUTPUT"
 teardown_test_dir
 
 # ─── Test: structured audit and map preview ───────────────────────────────

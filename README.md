@@ -4,7 +4,7 @@ FE/BE 契约边界、微服务 Provider 契约和前端 Consumer Contract 的 Sp
 
 这是一个独立、项目无关的开源实现。仓库只维护治理模型、Spec Kit 扩展、Agent Skill、跨平台脚本、测试和通用示例；业务项目自己的服务清单、运行配置、契约内容和历史告警基线不进入本仓库。
 
-许可证：MIT。当前版本：`1.6.0`。要求 Spec Kit `>= 0.16.2`。
+许可证：MIT。当前版本：`1.7.0`。要求 Spec Kit `>= 0.16.2`。
 
 ## 设计原则
 
@@ -118,6 +118,11 @@ contracts/
   - 输出前端 `_consumers` 与后端 `_registry` Consumer 影响面，并生成 x-changelog 和消费者 changes 段。
   - 退出码：`0` = 仅 non-breaking 或无变更；`2` = 存在 breaking changes。
 
+- `speckit.contract-governance.check-changelog`（兼容别名：`speckit.contract.check-changelog`）
+  - 对比治理基线，自动发现变化的 Provider，并要求所有语义变化都有 fingerprint 完整匹配的新增 `x-changelog`。
+  - 纯描述、注释和格式变化自动豁免；新增 Provider 按初始版本豁免。
+  - 退出码：`0` = 完整；`1` = 执行或配置错误；`2` = 缺失、部分覆盖、重复 fingerprint 或聚合错误。
+
 - `speckit.contract-governance.validate`（兼容别名：`speckit.contract.validate`）
   - 编排运行边界校验和 registry 校验。
   - 用于 `/speckit-tasks` 前后这类必须同时检查两层规则的门禁。
@@ -188,6 +193,7 @@ contracts/
 .specify/extensions/contract-governance/scripts/bash/diff-contract.sh --service my-service
 .specify/extensions/contract-governance/scripts/bash/diff-contract.sh --service my-service --write
 .specify/extensions/contract-governance/scripts/bash/diff-contract.sh --service my-service --base origin/main --write --consumer contracts/_consumers/web-app.yaml
+.specify/extensions/contract-governance/scripts/bash/check-changelog.sh --ci
 ```
 
 执行语义审计或输出 CI 报告：
@@ -207,7 +213,7 @@ contracts/
 
 ## CI 集成
 
-在 CI 流水线中同时运行结构校验和严格语义审计。`validate-all.sh` 负责硬错误，`audit-contracts.sh --strict-warnings` 会让 warning 返回 exit `2`。
+在 CI 流水线中依次运行 changelog 门禁、结构校验和严格语义审计。`check-changelog.sh --ci` 强制增量留痕，`validate-all.sh` 负责硬错误，`audit-contracts.sh --strict-warnings` 会让 warning 返回 exit `2`。
 
 已有项目如果存在历史 warning，应使用仓库级精确基线暂时放行已知项，并在新增或消失的 warning 出现时阻断；不要永久关闭 `--strict-warnings`。
 
@@ -221,6 +227,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate contracts
         run: |
+          bash .specify/extensions/contract-governance/scripts/bash/check-changelog.sh --ci
           bash .specify/extensions/contract-governance/scripts/bash/validate-all.sh --bootstrap-ok
           bash .specify/extensions/contract-governance/scripts/bash/audit-contracts.sh --strict-warnings
 ```
@@ -230,6 +237,7 @@ jobs:
 ```yaml
 contract-validation:
   script:
+    - bash .specify/extensions/contract-governance/scripts/bash/check-changelog.sh --ci
     - bash .specify/extensions/contract-governance/scripts/bash/validate-all.sh --bootstrap-ok
     - bash .specify/extensions/contract-governance/scripts/bash/audit-contracts.sh --strict-warnings
   rules:
@@ -258,6 +266,8 @@ contract-validation:
 - SERVICE-MAP 必须覆盖注册的 Provider、Consumer 和 registry 中的跨服务依赖。
 - registry 不得重复维护 `provides`、`feign_operations` 或 `mq_operations`；Provider 能力从 OpenAPI/事件契约推导，调用方从各 Consumer 的 `consumes` 推导。
 - breaking change 必须列出受影响 Consumer，并跟踪 `PENDING_ACK` / `ACKNOWLEDGED`。
+- 既有 Provider 的所有 breaking/non-breaking 语义变化都必须按 operation 聚合写入 `x-changelog`；每项原子变化使用规范 JSON 的 SHA-256 fingerprint 去重和验收。
+- 修改既有 Provider 契约时，同文件的 changelog 是必要组成；Consumer ack、SERVICE-MAP 和 Git 写操作仍需独立授权。
 
 ## 可配置项
 
@@ -278,6 +288,8 @@ contract-validation:
 | `changelog_types` | 合法的 x-changelog 类型 | `breaking`, `non-breaking`, `deprecated` |
 | `change_ack_values` | 合法的变更确认状态 | `PENDING_ACK`, `ACKNOWLEDGED` |
 | `pending_max_age_days` | PENDING 老化告警阈值；`0` 表示关闭 | `30` |
+| `changelog_enforcement` | 留痕范围：`all`、`breaking` 或 `off` | `all` |
+| `changelog_baseline_ref` | 增量治理基线；CI 必须配置或传 `--base` | `""` |
 
 ## 开发与发布
 

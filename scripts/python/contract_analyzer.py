@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import datetime as dt
+import hashlib
 import json
 import re
 import subprocess
@@ -72,6 +73,19 @@ class Change:
 
     def as_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
+
+    def fingerprint(self, service: str) -> str:
+        payload = {
+            "service": service,
+            "change_type": self.change_type,
+            "method": self.method.lower(),
+            "path": self.path,
+            "operationId": self.operation_id,
+            "code": self.code,
+            "description": self.description,
+        }
+        canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def load_yaml(path: Path) -> Any:
@@ -447,6 +461,7 @@ def validate_semantics(root: Path, service_filter: str = "", consumer_filter: st
 
     for service, document in documents.items():
         api_file = contracts / service / "api.yaml"
+        findings.extend(validate_changelog(document, service, repo_relative(api_file, root)))
         seen_ids: set[str] = set()
         for operation in iter_operations(document, service, api_file):
             pointer = f"{operation.method.upper()} {operation.path}"
@@ -747,6 +762,346 @@ def semantic_diff(old_document: dict[str, Any], new_document: dict[str, Any], se
     return changes
 
 
+def _sha256_json(value: Any) -> str:
+    canonical = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def group_changes(
+    service: str,
+    changes: list[Change],
+    document: dict[str, Any],
+    change_date: dt.date | None = None,
+) -> list[dict[str, Any]]:
+    """Group atomic changes by operation and render deterministic changelog entries."""
+    grouped: dict[tuple[str, str, str], list[Change]] = {}
+    for change in changes:
+        key = (change.method.lower(), change.path, change.operation_id)
+        grouped.setdefault(key, []).append(change)
+    version = str((document.get("info") or {}).get("version") or "")
+    day = (change_date or dt.date.today()).isoformat()
+    entries: list[dict[str, Any]] = []
+    for (method, path, operation_id), items in sorted(grouped.items()):
+        ordered = sorted(items, key=lambda item: (item.change_type, item.code, item.description))
+        children = [
+            {
+                "type": item.change_type,
+                "code": item.code,
+                "summary": item.description,
+                "fingerprint": item.fingerprint(service),
+            }
+            for item in ordered
+        ]
+        fingerprints = sorted(child["fingerprint"] for child in children)
+        entry_type = "breaking" if any(child["type"] == "breaking" for child in children) else "non-breaking"
+        breaking_count = sum(child["type"] == "breaking" for child in children)
+        entry: dict[str, Any] = {
+            "id": f"{day}-{_sha256_json(fingerprints)[:12]}",
+            "version": version,
+            "date": day,
+            "type": entry_type,
+            "method": method,
+            "path": path,
+            "operationId": operation_id,
+            "summary": (
+                f"聚合 {len(children)} 项契约变化：breaking={breaking_count}，"
+                f"non-breaking={len(children) - breaking_count}"
+            ),
+            "changes": children,
+        }
+        consumers = sorted({consumer for item in ordered for consumer in item.consumers})
+        if consumers and entry_type == "breaking":
+            entry["consumers"] = consumers
+        entries.append(entry)
+    return entries
+
+
+def changelog_entries(document: dict[str, Any]) -> list[dict[str, Any]]:
+    value = document.get("x-changelog", []) if isinstance(document, dict) else []
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def changelog_fingerprints(entries: list[dict[str, Any]]) -> list[str]:
+    result: list[str] = []
+    for entry in entries:
+        changes = entry.get("changes")
+        if not isinstance(changes, list):
+            continue
+        for change in changes:
+            if isinstance(change, dict) and isinstance(change.get("fingerprint"), str):
+                result.append(str(change["fingerprint"]))
+    return result
+
+
+def validate_changelog(document: dict[str, Any], service: str, file: str) -> list[Finding]:
+    """Validate both legacy and fingerprinted x-changelog entries."""
+    findings: list[Finding] = []
+    raw = document.get("x-changelog") if isinstance(document, dict) else None
+    if raw is None:
+        return findings
+    if not isinstance(raw, list):
+        return [Finding("error", "changelog-invalid", "x-changelog 必须是数组", file, "x-changelog")]
+    seen_ids: set[str] = set()
+    seen_fingerprints: set[str] = set()
+    for index, entry in enumerate(raw):
+        pointer = f"x-changelog[{index}]"
+        if not isinstance(entry, dict):
+            findings.append(Finding("error", "changelog-entry-invalid", "x-changelog 条目必须是对象", file, pointer))
+            continue
+        entry_id = str(entry.get("id") or "")
+        if not entry_id:
+            findings.append(Finding("error", "changelog-id-missing", "x-changelog 条目缺少 id", file, pointer))
+        elif entry_id in seen_ids:
+            findings.append(Finding("error", "changelog-id-duplicate", f"x-changelog id 重复：{entry_id}", file, pointer))
+        seen_ids.add(entry_id)
+        entry_type = str(entry.get("type") or "")
+        if entry_type not in {"breaking", "non-breaking", "deprecated"}:
+            findings.append(Finding("error", "changelog-type-invalid", f"x-changelog type 非法：{entry_type}", file, pointer))
+        for field in ("date", "summary"):
+            if not entry.get(field):
+                findings.append(Finding("error", f"changelog-{field}-missing", f"x-changelog 条目缺少 {field}", file, pointer))
+        changes = entry.get("changes")
+        if changes is None:
+            continue  # Legacy entry remains parseable but never covers a fingerprint gate.
+        if entry_type not in {"breaking", "non-breaking"}:
+            findings.append(Finding("error", "changelog-aggregate-type-invalid", "新格式聚合 type 只能是 breaking 或 non-breaking", file, pointer))
+        if not isinstance(changes, list) or not changes:
+            findings.append(Finding("error", "changelog-changes-invalid", "新格式 x-changelog changes 必须是非空数组", file, pointer))
+            continue
+        child_types: list[str] = []
+        for child_index, child in enumerate(changes):
+            child_pointer = f"{pointer}.changes[{child_index}]"
+            if not isinstance(child, dict):
+                findings.append(Finding("error", "changelog-change-invalid", "changes 条目必须是对象", file, child_pointer))
+                continue
+            child_type = str(child.get("type") or "")
+            child_types.append(child_type)
+            if child_type not in {"breaking", "non-breaking"}:
+                findings.append(Finding("error", "changelog-change-type-invalid", f"changes type 非法：{child_type}", file, child_pointer))
+            for field in ("code", "summary", "fingerprint"):
+                if not child.get(field):
+                    findings.append(Finding("error", f"changelog-change-{field}-missing", f"changes 条目缺少 {field}", file, child_pointer))
+            fingerprint = str(child.get("fingerprint") or "")
+            if fingerprint and not re.fullmatch(r"sha256:[0-9a-f]{64}", fingerprint):
+                findings.append(Finding("error", "changelog-fingerprint-invalid", f"fingerprint 非法：{fingerprint}", file, child_pointer))
+            elif fingerprint in seen_fingerprints:
+                findings.append(Finding("error", "changelog-fingerprint-duplicate", f"fingerprint 重复：{fingerprint}", file, child_pointer))
+            elif fingerprint:
+                seen_fingerprints.add(fingerprint)
+        expected_type = "breaking" if "breaking" in child_types else "non-breaking"
+        if child_types and entry_type != expected_type:
+            findings.append(Finding("error", "changelog-aggregate-type-invalid", f"聚合 type 应为 {expected_type}，当前为 {entry_type}", file, pointer))
+        child_fingerprints = [
+            str(child.get("fingerprint")) for child in changes
+            if isinstance(child, dict) and re.fullmatch(r"sha256:[0-9a-f]{64}", str(child.get("fingerprint") or ""))
+        ]
+        if child_fingerprints and entry.get("date"):
+            expected_id = f"{entry['date']}-{_sha256_json(sorted(child_fingerprints))[:12]}"
+            if entry_id != expected_id:
+                findings.append(Finding("error", "changelog-id-invalid", f"聚合 id 应为 {expected_id}，当前为 {entry_id}", file, pointer))
+    return findings
+
+
+def _replace_root_changelog(api_file: Path, entries: list[dict[str, Any]]) -> None:
+    text = api_file.read_text(encoding="utf-8")
+    rendered = yaml.safe_dump(
+        {"x-changelog": entries}, allow_unicode=True, sort_keys=False, width=4096
+    ).rstrip() + "\n"
+    match = re.search(r"(?m)^x-changelog:\s*(?:#.*)?$", text)
+    if match:
+        tail = text[match.end():]
+        next_root = re.search(r"(?m)^([A-Za-z0-9_.-]+):", tail)
+        end = match.end() + (next_root.start() if next_root else len(tail))
+        prefix = text[:match.start()].rstrip() + "\n\n"
+        suffix = text[end:].lstrip("\n")
+        api_file.write_text(prefix + rendered + ("\n" + suffix if suffix else ""), encoding="utf-8")
+    else:
+        api_file.write_text(text.rstrip() + "\n\n" + rendered, encoding="utf-8")
+
+
+def filter_new_changelog_entries(existing: list[dict[str, Any]], new_entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    known = set(changelog_fingerprints(existing))
+    filtered: list[dict[str, Any]] = []
+    for entry in new_entries:
+        children = [child for child in entry.get("changes", []) if child.get("fingerprint") not in known]
+        if not children:
+            continue
+        copy = dict(entry)
+        copy["changes"] = children
+        copy["id"] = f"{copy['date']}-{_sha256_json(sorted(child['fingerprint'] for child in children))[:12]}"
+        copy["type"] = "breaking" if any(child.get("type") == "breaking" for child in children) else "non-breaking"
+        copy["summary"] = (
+            f"聚合 {len(children)} 项契约变化：breaking={sum(child.get('type') == 'breaking' for child in children)}，"
+            f"non-breaking={sum(child.get('type') == 'non-breaking' for child in children)}"
+        )
+        filtered.append(copy)
+        known.update(child["fingerprint"] for child in children)
+    return filtered
+
+
+def write_changelog(api_file: Path, new_entries: list[dict[str, Any]]) -> int:
+    document = load_yaml(api_file)
+    existing = changelog_entries(document)
+    filtered = filter_new_changelog_entries(existing, new_entries)
+    if filtered:
+        _replace_root_changelog(api_file, existing + filtered)
+    return len(filtered)
+
+
+def update_consumers(consumer_files: list[Path], service: str, entries: list[dict[str, Any]]) -> int:
+    """Write PENDING_ACK only to explicitly authorized Consumer files."""
+    breaking = [entry for entry in entries if entry.get("type") == "breaking"]
+    updated = 0
+    for consumer_file in consumer_files:
+        data = load_yaml(consumer_file)
+        http_entries = ((data.get("consumes") or {}).get("http") or []) if isinstance(data, dict) else []
+        changed = False
+        for consumption in http_entries if isinstance(http_entries, list) else []:
+            if not isinstance(consumption, dict) or consumption.get("provider") != service:
+                continue
+            operation_id = str(consumption.get("operationId") or "")
+            changes = consumption.setdefault("changes", [])
+            if not isinstance(changes, list):
+                raise ValueError(f"{consumer_file}: changes 必须是数组")
+            known = {str(item.get("change_id")) for item in changes if isinstance(item, dict)}
+            for entry in breaking:
+                if entry.get("operationId") != operation_id or entry["id"] in known:
+                    continue
+                changes.append(
+                    {
+                        "change_id": entry["id"],
+                        "type": "breaking",
+                        "path": entry["path"],
+                        "method": entry["method"],
+                        "summary": entry["summary"],
+                        "since": entry["date"],
+                        "ack": "PENDING_ACK",
+                    }
+                )
+                known.add(entry["id"])
+                changed = True
+        if changed:
+            consumer_file.write_text(
+                yaml.safe_dump(data, allow_unicode=True, sort_keys=False, width=4096), encoding="utf-8"
+            )
+            updated += 1
+    return updated
+
+
+def _run_git(root: Path, arguments: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(root), *arguments], check=False, capture_output=True, text=True
+    )
+
+
+def _git_available(root: Path) -> bool:
+    return _run_git(root, ["rev-parse", "--is-inside-work-tree"]).returncode == 0
+
+
+def _resolve_changelog_base(root: Path, explicit: str, ci: bool) -> tuple[str, str]:
+    defaults, _ = config_defaults(root)
+    configured = str(defaults.get("changelog_baseline_ref") or "").strip()
+    if explicit:
+        return explicit, "explicit"
+    if configured:
+        return configured, "config"
+    if ci:
+        return "", "missing"
+    return "HEAD", "head"
+
+
+def _changed_provider_services(root: Path, base: str) -> tuple[list[str], str]:
+    completed = _run_git(root, ["diff", "--name-only", base, "--", "contracts/*/api.yaml"])
+    if completed.returncode != 0:
+        return [], completed.stderr.strip() or completed.stdout.strip()
+    services: set[str] = set()
+    for line in completed.stdout.splitlines():
+        match = re.fullmatch(r"contracts/([^/]+)/api\.yaml", line.strip())
+        if match and not match.group(1).startswith("_"):
+            services.add(match.group(1))
+    return sorted(services), ""
+
+
+def check_changelog(
+    root: Path,
+    base: str = "",
+    services: list[str] | None = None,
+    ci: bool = False,
+) -> tuple[int, list[Finding], str]:
+    """Check that every semantic change since the baseline has a new exact fingerprint."""
+    defaults, _ = config_defaults(root)
+    enforcement = str(defaults.get("changelog_enforcement") or "all").strip().lower()
+    if enforcement not in {"all", "breaking", "off"}:
+        return 1, [Finding("error", "changelog-enforcement-invalid", f"changelog_enforcement 非法：{enforcement}")], ""
+    if enforcement == "off":
+        return 0, [Finding("info", "changelog-enforcement-off", "x-changelog 门禁已关闭")], ""
+    if not _git_available(root):
+        severity = "error" if ci else "warning"
+        code = "git-required" if ci else "git-unavailable-skip"
+        return (1 if ci else 0), [Finding(severity, code, "当前项目不可用 Git；本地模式跳过，CI 模式必须失败")], ""
+    resolved_base, source = _resolve_changelog_base(root, base, ci)
+    if not resolved_base:
+        return 1, [Finding("error", "changelog-baseline-missing", "CI 模式必须通过 --base 或 changelog_baseline_ref 指定基线")], ""
+    verify = _run_git(root, ["rev-parse", "--verify", f"{resolved_base}^{{commit}}"])
+    if verify.returncode != 0:
+        return 1, [Finding("error", "changelog-baseline-unreadable", f"无法读取基线 {resolved_base}")], resolved_base
+    selected = sorted(set(services or []))
+    if not selected:
+        selected, error = _changed_provider_services(root, resolved_base)
+        if error:
+            return 1, [Finding("error", "changelog-diff-failed", f"无法发现变化的 Provider：{error}")], resolved_base
+    findings: list[Finding] = []
+    for service in selected:
+        api_file = root / "contracts" / service / "api.yaml"
+        if not api_file.exists():
+            findings.append(Finding("error", "provider-contract-missing", f"Provider 契约不存在：{service}", repo_relative(api_file, root)))
+            continue
+        current = load_yaml(api_file)
+        old = git_old_document(root, service, resolved_base)
+        if old is None:
+            findings.append(Finding("info", "provider-contract-initial", f"{service} 是基线后新增 Provider，按初始版本豁免", repo_relative(api_file, root)))
+            continue
+        structural = validate_changelog(current, service, repo_relative(api_file, root))
+        structural_errors = [item for item in structural if item.severity == "error"]
+        findings.extend(structural_errors)
+        expected_changes = semantic_diff(old, current, service, root)
+        if enforcement == "breaking":
+            expected_changes = [item for item in expected_changes if item.change_type == "breaking"]
+        expected = {item.fingerprint(service): item for item in expected_changes}
+        baseline_fingerprints = set(changelog_fingerprints(changelog_entries(old)))
+        current_entries = changelog_entries(current)
+        new_fingerprints = [
+            value for value in changelog_fingerprints(current_entries) if value not in baseline_fingerprints
+        ]
+        coverage = set(new_fingerprints)
+        for fingerprint in sorted(expected.keys() - coverage):
+            item = expected[fingerprint]
+            findings.append(
+                Finding(
+                    "error", "changelog-coverage-missing",
+                    f"{service} {item.method.upper()} {item.path} 未记录 {item.code} 的 fingerprint",
+                    repo_relative(api_file, root), item.operation_id,
+                    {"fingerprint": fingerprint, "change_type": item.change_type},
+                )
+            )
+        for entry in current_entries:
+            children = entry.get("changes")
+            if not isinstance(children, list):
+                continue
+            for child in children:
+                if not isinstance(child, dict) or child.get("fingerprint") not in expected:
+                    continue
+                item = expected[str(child["fingerprint"])]
+                entry_key = (str(entry.get("method") or "").lower(), str(entry.get("path") or ""), str(entry.get("operationId") or ""))
+                expected_key = (item.method.lower(), item.path, item.operation_id)
+                if entry_key != expected_key:
+                    findings.append(Finding("error", "changelog-operation-group-invalid", f"fingerprint 必须聚合到对应 operation：{item.method.upper()} {item.path} ({item.operation_id})", repo_relative(api_file, root), str(entry.get("id") or "")))
+        if expected_changes and not structural_errors and not (expected.keys() - coverage):
+            findings.append(Finding("info", "changelog-coverage-complete", f"{service} 的 {len(expected_changes)} 项语义变化均已完整留痕", repo_relative(api_file, root)))
+    failed = any(item.severity == "error" for item in findings)
+    return (2 if failed else 0), findings, resolved_base
+
+
 def git_old_document(root: Path, service: str, base: str) -> dict[str, Any] | None:
     ref = base or "HEAD"
     relative = f"contracts/{service}/api.yaml"
@@ -948,6 +1303,21 @@ def build_parser() -> argparse.ArgumentParser:
     diff.add_argument("--new-file", type=Path)
     diff.add_argument("--format", choices=("text", "json", "sarif", "tsv"), default="text")
 
+    changelog = subparsers.add_parser("changelog", help="Generate or write grouped x-changelog entries")
+    changelog.add_argument("--repo-root", type=Path, required=True)
+    changelog.add_argument("--service", required=True)
+    changelog.add_argument("--base", default="")
+    changelog.add_argument("--write", action="store_true")
+    changelog.add_argument("--consumer", type=Path, action="append", default=[])
+    changelog.add_argument("--format", choices=("text", "json"), default="text")
+
+    check = subparsers.add_parser("check-changelog", help="Require exact changelog coverage since a baseline")
+    check.add_argument("--repo-root", type=Path, required=True)
+    check.add_argument("--base", default="")
+    check.add_argument("--service", action="append", default=[])
+    check.add_argument("--ci", action="store_true")
+    check.add_argument("--format", choices=("text", "json", "sarif"), default="text")
+
     runtime = subparsers.add_parser("runtime-diff", help="Compare designed and exported runtime OpenAPI")
     runtime.add_argument("--contract", type=Path, required=True)
     runtime.add_argument("--runtime", type=Path, required=True)
@@ -986,6 +1356,45 @@ def main() -> int:
         changes = semantic_diff(old_document, new_document, args.service, root)
         emit_changes(changes, args.format)
         return 2 if any(item.change_type == "breaking" for item in changes) else 0
+    if args.command == "changelog":
+        root = args.repo_root.resolve()
+        api_file = root / "contracts" / args.service / "api.yaml"
+        if not api_file.exists():
+            print(f"[diff-contract] ERROR: 未找到 {api_file}", file=sys.stderr)
+            return 1
+        current = load_yaml(api_file)
+        old = git_old_document(root, args.service, args.base)
+        if old is None:
+            print(f"[diff-contract] {args.service} 在比较基线中不存在，按初始 Provider 契约处理，不要求 x-changelog")
+            return 0
+        changes = semantic_diff(old, current, args.service, root)
+        entries = filter_new_changelog_entries(changelog_entries(current), group_changes(args.service, changes, current))
+        if args.format == "json":
+            print(json.dumps({"service": args.service, "entries": entries}, ensure_ascii=False, indent=2))
+        elif entries:
+            print(yaml.safe_dump({"x-changelog": entries}, allow_unicode=True, sort_keys=False, width=4096).rstrip())
+        else:
+            print("[diff-contract] 没有未记录的语义变化")
+        if args.write and entries:
+            count = write_changelog(api_file, entries)
+            print(f"[diff-contract] 已写入 {count} 个 operation 聚合条目：{repo_relative(api_file, root)}")
+            if args.consumer:
+                consumer_files = [path if path.is_absolute() else root / path for path in args.consumer]
+                missing = [str(path) for path in consumer_files if not path.exists()]
+                if missing:
+                    print(f"[diff-contract] ERROR: Consumer 文件不存在：{', '.join(missing)}", file=sys.stderr)
+                    return 1
+                updated = update_consumers(consumer_files, args.service, entries)
+                print(f"[diff-contract] 已更新 {updated} 个显式授权的 Consumer 文件")
+        return 2 if any(item.change_type == "breaking" for item in changes) else 0
+    if args.command == "check-changelog":
+        rc, findings, resolved_base = check_changelog(
+            args.repo_root.resolve(), args.base, args.service, args.ci
+        )
+        if resolved_base:
+            findings.insert(0, Finding("info", "changelog-baseline", f"比较基线：{resolved_base}"))
+        emit_findings(findings, args.format)
+        return rc
     if args.command == "runtime-diff":
         old_document = load_yaml(args.contract)
         new_document = load_yaml(args.runtime)

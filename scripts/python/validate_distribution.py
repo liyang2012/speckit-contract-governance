@@ -21,6 +21,8 @@ REQUIRED = (
     "skills/contract-governance/SKILL.md",
     "scripts/bash/test-smoke.sh",
     "scripts/bash/test-speckit-0162.sh",
+    "scripts/bash/check-changelog.sh",
+    "scripts/powershell/check-changelog.ps1",
     "scripts/python/test_contract_analyzer.py",
 )
 FORBIDDEN_DISTRIBUTION_FILES = (
@@ -41,6 +43,7 @@ EXPECTED_COMMANDS = {
     "speckit.contract-governance.validate-boundary",
     "speckit.contract-governance.validate-registry",
     "speckit.contract-governance.diff",
+    "speckit.contract-governance.check-changelog",
     "speckit.contract-governance.validate",
     "speckit.contract-governance.audit",
     "speckit.contract-governance.sync-map",
@@ -49,6 +52,7 @@ EXPECTED_HOOKS = {
     "after_plan": "speckit.contract-governance.validate-boundary",
     "before_tasks": "speckit.contract-governance.validate",
     "after_tasks": "speckit.contract-governance.validate",
+    "after_implement": "speckit.contract-governance.check-changelog",
 }
 
 
@@ -112,8 +116,9 @@ def main() -> None:
         hook = hooks.get(event, {})
         if hook.get("command") != expected_command:
             fail(f"{event} must invoke {expected_command}")
-        if hook.get("priority") != 10:
-            fail(f"{event} must declare priority 10 explicitly")
+        expected_priority = 5 if event == "after_implement" else 10
+        if hook.get("priority") != expected_priority:
+            fail(f"{event} must declare priority {expected_priority} explicitly")
 
     ignore_patterns = {
         line.strip()

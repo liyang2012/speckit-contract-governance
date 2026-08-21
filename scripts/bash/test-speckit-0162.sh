@@ -31,7 +31,14 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 command -v specify >/dev/null 2>&1 || fail "specify is not installed"
-ACTUAL_VERSION="$(specify --version | awk 'NR == 1 { print $2 }')"
+SPECIFY_CMD=(specify)
+ACTUAL_VERSION="$("${SPECIFY_CMD[@]}" --version | awk 'NR == 1 { print $2 }')"
+if [[ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]]; then
+    command -v uvx >/dev/null 2>&1 || \
+        fail "expected specify $EXPECTED_VERSION, found ${ACTUAL_VERSION:-unknown}, and uvx is unavailable"
+    SPECIFY_CMD=(uvx --from "specify-cli==$EXPECTED_VERSION" specify)
+    ACTUAL_VERSION="$("${SPECIFY_CMD[@]}" --version | awk 'NR == 1 { print $2 }')"
+fi
 [[ "$ACTUAL_VERSION" == "$EXPECTED_VERSION" ]] || \
     fail "expected specify $EXPECTED_VERSION, found ${ACTUAL_VERSION:-unknown}"
 
@@ -39,9 +46,9 @@ FIXTURE_DIR="$(mktemp -d "$TMP_BASE/contract-governance-speckit-0162.XXXXXX")"
 LOG_FILE="$FIXTURE_DIR/smoke.log"
 cd "$FIXTURE_DIR"
 
-specify init --here --force --integration codex --ignore-agent-tools >"$LOG_FILE" 2>&1 || \
+"${SPECIFY_CMD[@]}" init --here --force --integration codex --ignore-agent-tools >"$LOG_FILE" 2>&1 || \
     fail "fixture initialization failed"
-specify extension add --dev "$ROOT_DIR" >"$LOG_FILE" 2>&1 || \
+"${SPECIFY_CMD[@]}" extension add --dev "$ROOT_DIR" >"$LOG_FILE" 2>&1 || \
     fail "extension installation failed"
 
 INSTALL_DIR="$FIXTURE_DIR/.specify/extensions/contract-governance"
@@ -67,7 +74,7 @@ registry = json.loads(
     (fixture / ".specify/extensions/.registry").read_text(encoding="utf-8")
 )
 entry = registry["extensions"]["contract-governance"]
-assert entry["version"] == "1.6.0", entry
+assert entry["version"] == "1.7.0", entry
 
 registered = set(entry["registered_commands"]["codex"])
 canonical = {
@@ -76,15 +83,28 @@ canonical = {
     "speckit.contract-governance.validate-boundary",
     "speckit.contract-governance.validate-registry",
     "speckit.contract-governance.diff",
+    "speckit.contract-governance.check-changelog",
     "speckit.contract-governance.validate",
     "speckit.contract-governance.audit",
     "speckit.contract-governance.sync-map",
 }
 assert canonical <= registered, sorted(canonical - registered)
+aliases = {name.replace("speckit.contract-governance.", "speckit.contract.") for name in canonical}
+assert aliases <= registered, sorted(aliases - registered)
+assert len(registered) == 18, sorted(registered)
 
 for command in canonical:
     skill_name = command.replace(".", "-")
     assert (fixture / ".agents/skills" / skill_name / "SKILL.md").is_file(), skill_name
+for command in aliases:
+    skill_name = command.replace(".", "-")
+    assert (fixture / ".agents/skills" / skill_name / "SKILL.md").is_file(), skill_name
+
+config = yaml.safe_load(
+    (fixture / ".specify/extensions/contract-governance/contract-governance-config.yml").read_text(encoding="utf-8")
+)
+assert config["changelog_enforcement"] == "all", config
+assert config["changelog_baseline_ref"] == "", config
 
 hooks = yaml.safe_load(
     (fixture / ".specify/extensions.yml").read_text(encoding="utf-8")
@@ -93,6 +113,7 @@ expected_hooks = {
     "after_plan": "speckit.contract-governance.validate-boundary",
     "before_tasks": "speckit.contract-governance.validate",
     "after_tasks": "speckit.contract-governance.validate",
+    "after_implement": "speckit.contract-governance.check-changelog",
 }
 for event, command in expected_hooks.items():
     matching = [
@@ -102,10 +123,11 @@ for event, command in expected_hooks.items():
     ]
     assert len(matching) == 1, (event, matching)
     assert matching[0]["command"] == command, matching[0]
-    assert matching[0]["priority"] == 10, matching[0]
+    expected_priority = 5 if event == "after_implement" else 10
+    assert matching[0]["priority"] == expected_priority, matching[0]
 PY
 
-specify extension info contract-governance >"$LOG_FILE" 2>&1 || \
+"${SPECIFY_CMD[@]}" extension info contract-governance >"$LOG_FILE" 2>&1 || \
     fail "installed extension metadata cannot be read"
 
 echo "Spec Kit 0.16.2 compatibility smoke passed"

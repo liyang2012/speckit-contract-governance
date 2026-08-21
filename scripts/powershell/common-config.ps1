@@ -17,6 +17,8 @@ function Import-CGConfig {
     $script:CG_CONSUMER_STATUSES     = @("PENDING", "RESOLVED", "MISMATCH")
     $script:CG_CHANGELOG_TYPES       = @("breaking", "non-breaking", "deprecated")
     $script:CG_CHANGE_ACK_VALUES     = @("PENDING_ACK", "ACKNOWLEDGED")
+    $script:CG_CHANGELOG_ENFORCEMENT = "all"
+    $script:CG_CHANGELOG_BASELINE_REF = ""
 
     # Locate config file
     $extDir = Split-Path $PSScriptRoot -Parent | Split-Path -Parent
@@ -87,6 +89,12 @@ function Import-CGConfig {
 
     $v = Get-ConfigScalar "response_wrapper_schemas"
     if ($v) { $script:CG_RESPONSE_WRAPPER_SCHEMAS = ($v -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } }
+
+    $v = Get-ConfigScalar "changelog_enforcement"
+    if ($v) { $script:CG_CHANGELOG_ENFORCEMENT = $v }
+
+    $v = Get-ConfigScalar "changelog_baseline_ref"
+    if ($v) { $script:CG_CHANGELOG_BASELINE_REF = $v }
 
     $list = Get-ConfigList "allowed_tags"
     if ($list.Count -gt 0) { $script:CG_ALLOWED_TAGS = $list }

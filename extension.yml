@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: contract-governance
   name: "Contract Governance"
-  version: "1.6.0"
+  version: "1.7.0"
   description: "Validates FE/BE boundaries, Provider/Consumer contracts, OpenAPI compatibility, service topology, internal API safety, runtime drift, and governance reports"
   author: spec-kit-community
   license: MIT
@@ -50,6 +50,11 @@ provides:
         - speckit.contract.diff
       file: commands/speckit.contract.diff.md
       description: "Detect contract changes via git diff and generate x-changelog entries"
+    - name: speckit.contract-governance.check-changelog
+      aliases:
+        - speckit.contract.check-changelog
+      file: commands/speckit.contract.check-changelog.md
+      description: "Require exact fingerprint coverage for every Provider semantic change since a baseline"
     - name: speckit.contract-governance.validate
       aliases:
         - speckit.contract.validate
@@ -88,6 +93,11 @@ hooks:
     optional: false
     priority: 10
     description: "Validate contract governance after task generation"
+  after_implement:
+    command: speckit.contract-governance.check-changelog
+    optional: false
+    priority: 5
+    description: "Require Provider semantic changes to be recorded before commit hooks run"
 
 tags:
   - "boundary"
@@ -128,3 +138,5 @@ config:
       - PENDING_ACK
       - ACKNOWLEDGED
     pending_max_age_days: 30
+    changelog_enforcement: all
+    changelog_baseline_ref: ""

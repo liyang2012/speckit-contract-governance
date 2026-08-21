@@ -110,7 +110,7 @@ try {
 # --- Test: -Help flags -------------------------------------------------------
 
 Write-Host "=== Test: -Help flags ==="
-$scripts = @("init-registry.ps1", "init-consumer.ps1", "validate-boundary.ps1", "validate-registry.ps1", "diff-contract.ps1", "validate-all.ps1")
+$scripts = @("init-registry.ps1", "init-consumer.ps1", "validate-boundary.ps1", "validate-registry.ps1", "diff-contract.ps1", "check-changelog.ps1", "validate-all.ps1")
 foreach ($s in $scripts) {
     $scriptPath = Join-Path $ScriptDir $s
     if (-not (Test-Path $scriptPath)) {
@@ -295,6 +295,21 @@ $scriptPath = Join-Path $ScriptDir "diff-contract.ps1"
 $result = Invoke-Capture -Script $scriptPath -Arguments @("-Service", "svc-e")
 Assert-Exit -Label "diff-contract exits 2 on breaking change" -Expected 2 -Actual $result.ExitCode -Output $result.Output
 Assert-OutputContains -Label "diff-contract reports breaking" -Expected "breaking" -Output $result.Output.ToLower()
+
+$checkScript = Join-Path $ScriptDir "check-changelog.ps1"
+$result = Invoke-Capture -Script $checkScript -Arguments @("-Base", "HEAD", "-Service", "svc-e", "-Ci")
+Assert-Exit -Label "check-changelog exits 2 when record is missing" -Expected 2 -Actual $result.ExitCode -Output $result.Output
+Assert-OutputContains -Label "check-changelog reports missing fingerprint" -Expected "changelog-coverage-missing" -Output $result.Output
+
+$result = Invoke-Capture -Script $scriptPath -Arguments @("-Service", "svc-e", "-Base", "HEAD", "-Write")
+Assert-Exit -Label "diff-contract writes grouped changelog" -Expected 2 -Actual $result.ExitCode -Output $result.Output
+$result = Invoke-Capture -Script $checkScript -Arguments @("-Base", "HEAD", "-Service", "svc-e", "-Ci")
+Assert-Exit -Label "check-changelog passes complete record" -Expected 0 -Actual $result.ExitCode -Output $result.Output
+Assert-OutputContains -Label "check-changelog reports complete coverage" -Expected "changelog-coverage-complete" -Output $result.Output
+
+$result = Invoke-Capture -Script $checkScript -Arguments @("-Ci")
+Assert-Exit -Label "CI without baseline exits 1" -Expected 1 -Actual $result.ExitCode -Output $result.Output
+Assert-OutputContains -Label "CI reports missing baseline" -Expected "changelog-baseline-missing" -Output $result.Output
 
 $result = Invoke-Capture -Script $scriptPath -Arguments @("-Service", "svc-e", "-ConsumerFiles", "contracts/_consumers/web-app.yaml")
 Assert-Exit -Label "diff-contract rejects consumer writes without -Write" -Expected 1 -Actual $result.ExitCode -Output $result.Output

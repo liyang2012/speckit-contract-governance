@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-08-21
+
+### 新增
+- 新增 `check-changelog` 主命令及兼容别名，支持显式/配置基线、服务过滤、CI 严格模式和 `0/1/2` 分层退出码。
+- 新增 `changelog_enforcement`、`changelog_baseline_ref` 配置以及优先级 5 的 `after_implement` 留痕 Hook。
+- Python 单一核心生成稳定 fingerprint、operation 聚合条目、基线覆盖门禁和显式 Consumer `PENDING_ACK`。
+
+### 变更
+- breaking 与 non-breaking 语义变化均进入 `x-changelog`；纯描述/格式变化和新 Provider 初始版本豁免。
+- Bash/PowerShell diff 入口改为薄代理，YAML 转义、写入和幂等逻辑集中到 Python/PyYAML。
+- 授权修改既有 Provider 契约时，同文件 changelog 成为必要组成；Consumer、SERVICE-MAP 和 Git 写入仍保持独立授权。
+
 ## [1.6.0] - 2026-08-13
 
 ### 新增

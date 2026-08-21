@@ -28,6 +28,8 @@ description: 当用户需要初始化、校验、审计或同步 Spec Kit 契约
 | `changelog_types` | x-changelog 合法类型 | `breaking`, `non-breaking`, `deprecated` |
 | `change_ack_values` | Consumer 变更确认状态 | `PENDING_ACK`, `ACKNOWLEDGED` |
 | `pending_max_age_days` | PENDING 老化告警阈值；`0` 关闭老化告警 | `30` |
+| `changelog_enforcement` | Provider 语义变化留痕范围：`all`、`breaking`、`off` | `all` |
+| `changelog_baseline_ref` | 增量治理比较基线；CI 必须配置或显式传入 | 空字符串 |
 
 如果配置文件不存在，回退到 `extension.yml` 的 `config.defaults` 节点。
 
@@ -69,10 +71,18 @@ description: 当用户需要初始化、校验、审计或同步 Spec Kit 契约
 - 默认只读执行 `.specify/extensions/contract-governance/scripts/bash/diff-contract.sh --service <服务名>`，只输出变更和建议的 YAML，不写文件。
 - 服务名是必填项。用户未指定时，先只读检查变更的 `contracts/*/api.yaml`；只能唯一确定服务时才推断，否则询问用户。
 - 用户指定基线时追加 `--base <git-ref>`。
-- 只有用户明确要求写入 x-changelog 时，才追加 `--write`。
+- 单独执行 diff 时，只有用户明确要求写入 x-changelog 才追加 `--write`。
+- **如果用户已经授权修改既有 Provider `contracts/<service>/api.yaml`，同文件的 `x-changelog` 是该语义修改的必要组成，不需要再次询问授权。完成 Provider 修改后必须自动执行 `diff-contract --service <service> --write`，并执行 `check-changelog --service <service>` 验证 fingerprint 完整覆盖。**
 - 只有用户明确要求同步 Consumer Contract 时，才追加 `--write --consumer contracts/_consumers/<consumer-name>.yaml`；`--consumer` 接受文件路径而不是 consumer 名称，并且必须与 `--write` 同时使用。consumer 名称未指定时读取配置文件的 `default_consumer`。
 - 脚本通过只读 Git 历史检测变更；不得因为“检查契约变更”自动 stage、commit、切换分支或写入契约文件。
 - 语义 diff 必须覆盖 operation、参数、响应字段、类型/格式、必填、枚举、状态码、operationId 和 tags，并报告 `_registry` / `_consumers` 影响面。
+
+用户说「检查 changelog 门禁」「强制变更留痕」「check changelog」时：
+
+- 执行 `.specify/extensions/contract-governance/scripts/bash/check-changelog.sh`。
+- 用户指定基线时追加 `--base <git-ref>`；指定服务时追加 `--service <服务名>`。
+- CI/严格门禁场景追加 `--ci`。CI 缺 Git、缺基线或基线不可读必须失败；本地无 Git只告警并跳过。
+- 退出码 `2` 表示存在未记录、部分记录、重复 fingerprint 或错误聚合的语义变化。
 
 用户说「深度审计契约」「检查 required_fields」「对比 SpringDoc」「输出 JSON/SARIF」「检查事件兼容」「检查过期 PENDING」时：
 
@@ -125,6 +135,8 @@ description: 当用户需要初始化、校验、审计或同步 Spec Kit 契约
 - 同一个 operation 不应同时标记 `前端API` 和 `Feign`。如果确实无法拆分，`plan.md` 必须明确共享接口例外、权限模型、字段暴露风险和兼容策略。
 - 如果配置了 `response_wrapper_schemas`，Provider OpenAPI 必须声明或引用至少一个匹配的标准响应包装 schema。
 - Consumer 状态、x-changelog 类型和变更确认状态分别以 `consumer_statuses`、`changelog_types`、`change_ack_values` 为准。
+- `changelog_enforcement=all` 时，既有 Provider 的 breaking 与 non-breaking 语义变化都必须按 operation 聚合写入 `x-changelog`；纯描述、注释、格式变化和新增 Provider 初始版本豁免。
+- 新格式 `x-changelog` 的每项原子变化必须带稳定 SHA-256 fingerprint；旧格式条目继续可解析，但不能覆盖门禁检测到的新变化。
 - registry 不维护 `provides`、`feign_operations`、`http_operations` 或 `mq_operations` 等派生摘要；Feign/内部 HTTP/MQ Provider 能力从契约文件推导，调用方从各 Consumer registry 的 `consumes` 推导。
 - SERVICE-MAP 必须覆盖已注册 Provider、前端 Consumer 和 registry 中的跨服务依赖；状态漂移需要报告。
 - 不自动把 PENDING 改成 RESOLVED；语义分析通过后仍需确认权限、错误语义和业务含义。
@@ -133,6 +145,7 @@ description: 当用户需要初始化、校验、审计或同步 Spec Kit 契约
 ## 操作边界
 
 - 除非用户明确要求，不执行 Git 写操作；`diff-contract` 场景只允许读取 Git 历史。
+- 修改既有 Provider 契约的授权自动包含同文件 `x-changelog` 写入，但不包含 Consumer ack、SERVICE-MAP 写入或任何 Git 写操作；这些操作仍需独立授权。
 - 除非用户明确要求恢复历史文件，不使用 `git restore`、`git checkout` 或破坏性清理来恢复已删除的 `contracts/`。
 - `init-registry.sh` 只创建空白骨架，不恢复旧的 OpenAPI 端点、事件 schema 或历史契约内容。
 - 如果发现已有 `contracts/` 文件处于删除状态，同时又存在未跟踪的新骨架文件，要如实报告状态，不要静默 stage、恢复或合并。
@@ -154,7 +167,8 @@ bash -n .specify/extensions/contract-governance/scripts/bash/init-registry.sh \
   .specify/extensions/contract-governance/scripts/bash/validate-boundary.sh \
   .specify/extensions/contract-governance/scripts/bash/validate-registry.sh \
   .specify/extensions/contract-governance/scripts/bash/validate-all.sh \
-  .specify/extensions/contract-governance/scripts/bash/diff-contract.sh
+  .specify/extensions/contract-governance/scripts/bash/diff-contract.sh \
+  .specify/extensions/contract-governance/scripts/bash/check-changelog.sh
 
 .specify/extensions/contract-governance/scripts/bash/test-smoke.sh
 PYTHONDONTWRITEBYTECODE=1 python3 .specify/extensions/contract-governance/scripts/python/test_contract_analyzer.py -v

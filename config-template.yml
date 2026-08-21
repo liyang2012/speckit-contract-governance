@@ -76,3 +76,10 @@ change_ack_values:
 
 # PENDING 超过该天数时产生老化告警；设置为 0 可关闭老化阈值。
 pending_max_age_days: 30
+
+# Provider 语义变化留痕策略：all、breaking 或 off。
+changelog_enforcement: all
+
+# x-changelog 比较基线。CI 模式必须配置该值或显式传入 --base。
+# 建议首次启用时填写实施前的完整 commit SHA，从该基线开始增量治理。
+changelog_baseline_ref: ""

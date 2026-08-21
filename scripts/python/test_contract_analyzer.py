@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -139,6 +140,16 @@ class AnalyzerTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp.cleanup()
+
+    def git_baseline(self) -> str:
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "config", "user.email", "test@example.com"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "config", "user.name", "Contract Test"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "add", "."], check=True)
+        subprocess.run(["git", "-C", str(self.root), "commit", "-qm", "baseline"], check=True)
+        return subprocess.run(
+            ["git", "-C", str(self.root), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+        ).stdout.strip()
 
     def test_valid_required_fields_pass(self) -> None:
         findings = analyzer.validate_semantics(self.root)
@@ -290,6 +301,110 @@ class AnalyzerTest(unittest.TestCase):
         codes = {item.code for item in changes}
         self.assertIn("operation-tags-changed", codes)
         self.assertIn("request-parameter-required", codes)
+
+    def test_fingerprint_is_stable_and_sensitive_to_description(self) -> None:
+        change = analyzer.Change("breaking", "operation-removed", "GET", "/items", "listItems", "removed")
+        first = change.fingerprint("svc")
+        second = analyzer.Change("breaking", "operation-removed", "get", "/items", "listItems", "removed").fingerprint("svc")
+        different = analyzer.Change("breaking", "operation-removed", "get", "/items", "listItems", "changed").fingerprint("svc")
+        self.assertEqual(first, second)
+        self.assertRegex(first, r"^sha256:[0-9a-f]{64}$")
+        self.assertNotEqual(first, different)
+
+    def test_group_changes_aggregates_operation_and_prefers_breaking(self) -> None:
+        changes = [
+            analyzer.Change("non-breaking", "response-status-added", "get", "/items", "listItems", "状态码新增：202"),
+            analyzer.Change("breaking", "response-field-removed", "get", "/items", "listItems", "字段删除：a:b\n下一行"),
+        ]
+        entries = analyzer.group_changes("svc", changes, base_api(), analyzer.dt.date(2026, 8, 21))
+        self.assertEqual(1, len(entries))
+        self.assertEqual("breaking", entries[0]["type"])
+        self.assertEqual("1.0.0", entries[0]["version"])
+        self.assertRegex(entries[0]["id"], r"^2026-08-21-[0-9a-f]{12}$")
+        self.assertEqual(2, len(entries[0]["changes"]))
+        invalid = {"openapi": "3.0.3", "info": {"version": "1.0.0"}, "paths": {}, "x-changelog": entries}
+        invalid["x-changelog"][0]["type"] = "non-breaking"
+        findings = analyzer.validate_changelog(invalid, "svc", "contracts/svc/api.yaml")
+        self.assertIn("changelog-aggregate-type-invalid", {item.code for item in findings})
+
+    def test_changelog_write_is_valid_and_idempotent(self) -> None:
+        api_file = self.root / "contracts/svc/api.yaml"
+        change = analyzer.Change("non-breaking", "demo", "get", "/api/v1/items", "listItems", "包含冒号: 引号 ' 和\n多行")
+        entries = analyzer.group_changes("svc", [change], base_api(), analyzer.dt.date(2026, 8, 21))
+        self.assertEqual(1, analyzer.write_changelog(api_file, entries))
+        self.assertEqual(0, analyzer.write_changelog(api_file, entries))
+        parsed = analyzer.load_yaml(api_file)
+        self.assertEqual(change.fingerprint("svc"), parsed["x-changelog"][0]["changes"][0]["fingerprint"])
+
+    def test_check_changelog_requires_complete_coverage(self) -> None:
+        baseline = self.git_baseline()
+        api_file = self.root / "contracts/svc/api.yaml"
+        api = analyzer.load_yaml(api_file)
+        api["paths"]["/api/v1/items"]["get"]["parameters"][0]["required"] = True
+        api["paths"]["/api/v1/items"]["get"]["responses"]["202"] = {"description": "accepted"}
+        write_yaml(api_file, api)
+        rc, findings, _ = analyzer.check_changelog(self.root, baseline, ["svc"], True)
+        self.assertEqual(2, rc)
+        self.assertEqual(2, len([item for item in findings if item.code == "changelog-coverage-missing"]))
+        auto_rc, auto_findings, _ = analyzer.check_changelog(self.root, baseline, [], True)
+        self.assertEqual(2, auto_rc)
+        self.assertEqual(2, len([item for item in auto_findings if item.code == "changelog-coverage-missing"]))
+        changes = analyzer.semantic_diff(analyzer.git_old_document(self.root, "svc", baseline), api, "svc", self.root)
+        entries = analyzer.group_changes("svc", changes, api, analyzer.dt.date(2026, 8, 21))
+        analyzer.write_changelog(api_file, entries)
+        rc, findings, _ = analyzer.check_changelog(self.root, baseline, ["svc"], True)
+        self.assertEqual(0, rc)
+        self.assertIn("changelog-coverage-complete", {item.code for item in findings})
+
+    def test_check_changelog_rejects_partial_wrong_and_duplicate_coverage(self) -> None:
+        baseline = self.git_baseline()
+        api_file = self.root / "contracts/svc/api.yaml"
+        api = analyzer.load_yaml(api_file)
+        operation = api["paths"]["/api/v1/items"]["get"]
+        operation["parameters"][0]["required"] = True
+        operation["responses"]["202"] = {"description": "accepted"}
+        old = analyzer.git_old_document(self.root, "svc", baseline)
+        entries = analyzer.group_changes("svc", analyzer.semantic_diff(old, api, "svc"), api)
+        entries[0]["changes"] = entries[0]["changes"][:1]
+        entries[0]["method"] = "post"
+        api["x-changelog"] = entries
+        write_yaml(api_file, api)
+        rc, findings, _ = analyzer.check_changelog(self.root, baseline, ["svc"], True)
+        self.assertEqual(2, rc)
+        codes = {item.code for item in findings}
+        self.assertIn("changelog-coverage-missing", codes)
+        self.assertIn("changelog-operation-group-invalid", codes)
+        api = analyzer.load_yaml(api_file)
+        duplicate = dict(api["x-changelog"][0])
+        duplicate["id"] = "duplicate"
+        api["x-changelog"].append(duplicate)
+        write_yaml(api_file, api)
+        _, findings, _ = analyzer.check_changelog(self.root, baseline, ["svc"], True)
+        self.assertIn("changelog-fingerprint-duplicate", {item.code for item in findings})
+
+    def test_description_only_change_and_new_provider_are_exempt(self) -> None:
+        baseline = self.git_baseline()
+        api_file = self.root / "contracts/svc/api.yaml"
+        api = analyzer.load_yaml(api_file)
+        api["info"]["description"] = "documentation only"
+        write_yaml(api_file, api)
+        rc, findings, _ = analyzer.check_changelog(self.root, baseline, ["svc"], True)
+        self.assertEqual(0, rc, [item.as_dict() for item in findings])
+        write_yaml(self.root / "contracts/new-svc/api.yaml", base_api())
+        rc, findings, _ = analyzer.check_changelog(self.root, baseline, ["new-svc"], True)
+        self.assertEqual(0, rc)
+        self.assertIn("provider-contract-initial", {item.code for item in findings})
+
+    def test_legacy_changelog_does_not_cover_new_change(self) -> None:
+        baseline = self.git_baseline()
+        api_file = self.root / "contracts/svc/api.yaml"
+        api = analyzer.load_yaml(api_file)
+        api["paths"]["/api/v1/items"]["get"]["parameters"][0]["required"] = True
+        api["x-changelog"] = [{"id": "legacy-1", "date": "2026-08-21", "type": "breaking", "summary": "legacy"}]
+        write_yaml(api_file, api)
+        rc, findings, _ = analyzer.check_changelog(self.root, baseline, ["svc"], True)
+        self.assertEqual(2, rc)
+        self.assertIn("changelog-coverage-missing", {item.code for item in findings})
 
     def test_json_and_sarif_reports(self) -> None:
         findings = [analyzer.Finding("warning", "demo", "message", "contracts/demo.yaml")]

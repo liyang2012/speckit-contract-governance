@@ -59,6 +59,14 @@ removal, incompatible type or format changes, enum narrowing, status-code remova
 operationId changes, and caller-tag boundary changes. A breaking change MUST identify
 affected Consumers and track acknowledgment.
 
+Every breaking or non-breaking semantic change to an existing Provider MUST be recorded
+in the same OpenAPI document under `x-changelog`. Atomic changes are grouped by
+`method + path + operationId`; each child change carries a SHA-256 fingerprint computed
+from canonical JSON containing service, change type, method, path, operationId, code,
+and description. Pure descriptions, comments, formatting, and an initial Provider
+document do not require a record. Legacy entries remain readable but cannot satisfy a
+new fingerprint gate. Consumer acknowledgment remains a separate owner-authorized write.
+
 ## 5. Authentication and isolation
 
 `internal_service_auth_mode` controls internal operations:
@@ -76,6 +84,8 @@ isolation tasks.
 - Structural validation detects malformed ownership, paths, tags, statuses, and links.
 - Semantic audit detects required-field gaps, drift, stale PENDING items, event
   incompatibility, and unacknowledged breaking changes.
+- Changelog enforcement compares a configured Git baseline and requires exact fingerprint
+  coverage before implementation can proceed to commit hooks.
 - Runtime OpenAPI comparison checks implementation drift from the declared Provider.
 - Business confirmation remains a human ownership decision.
 

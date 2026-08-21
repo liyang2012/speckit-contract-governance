@@ -18,6 +18,8 @@ _cg_load_config() {
     CG_CONSUMER_STATUSES_CSV="PENDING,RESOLVED,MISMATCH"
     CG_CHANGELOG_TYPES_CSV="breaking,non-breaking,deprecated"
     CG_CHANGE_ACK_VALUES_CSV="PENDING_ACK,ACKNOWLEDGED"
+    CG_CHANGELOG_ENFORCEMENT="all"
+    CG_CHANGELOG_BASELINE_REF=""
 
     local config_file=""
     # Try: <extension-dir>/contract-governance-config.yml (installed copy)
@@ -89,6 +91,12 @@ _cg_load_config() {
 
     val="$(_cg_parse_scalar "response_wrapper_schemas")"
     [[ -n "$val" ]] && CG_RESPONSE_WRAPPER_SCHEMAS="$val"
+
+    val="$(_cg_parse_scalar "changelog_enforcement")"
+    [[ -n "$val" ]] && CG_CHANGELOG_ENFORCEMENT="$val"
+
+    val="$(_cg_parse_scalar "changelog_baseline_ref")"
+    [[ -n "$val" ]] && CG_CHANGELOG_BASELINE_REF="$val"
 
     # Parse simple YAML list items under a known key
     # Usage: _cg_parse_list "allowed_tags"
